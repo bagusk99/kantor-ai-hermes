@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Kantor Kita · Four Floors</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;700&display=swap">
+  <link rel="stylesheet" href="office.css">
+  <link rel="stylesheet" href="tasks.css">
+</head>
+<body class="ui">
+  <canvas id="c" aria-label="Interactive model of a four-floor office"></canvas>
+  <div id="labels"></div>
+  <header id="header">
+    <div id="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><circle cx="8" cy="8" r="3.2"/><circle cx="16.5" cy="8.5" r="2.7"/><path d="M2 19c0-3.6 2.7-6 6-6s6 2.4 6 6v1H2z"/><path d="M15 20v-1c0-2-.6-3.7-1.7-5 .9-.6 2-1 3.2-1 3 0 5.5 2.2 5.5 5.5V20z"/></svg></span><div class="brand-name"><strong>Kantor Kita</strong><span class="brand-meta">13 people · 4 floors</span></div><span class="brand-tagline">A virtual office<br>for real teamwork</span></div>
+    <div class="header-card">
+      <div class="team-picker"><label for="teamSelect">Team member</label><select id="teamSelect"><option value="">Pick initials</option></select></div>
+      <div id="teamFaces" aria-label="Team members"></div>
+      <button id="bLog" class="btn" aria-controls="log" aria-expanded="true">Log</button>
+      <button id="bTasks" class="btn primary">Tasks <span id="taskCount">0</span></button>
+    </div>
+  </header>
+  <nav id="floors" aria-label="Choose a floor">
+    <p class="nav-title">Building section</p>
+    <div class="section-stack">
+      <button data-floor="4"><span class="floor-number">FL.04</span><span>Rooftop<small>Fresh air & breaks</small></span></button>
+      <button data-floor="3" aria-pressed="true"><span class="floor-number">FL.03</span><span>Workspace<small>The whole team</small></span></button>
+      <button data-floor="2"><span class="floor-number">FL.02</span><span>Kitchen & dining<small>Shared tables</small></span></button>
+      <button data-floor="1"><span class="floor-number">FL.01</span><span>Barber & parking<small>Entrance</small></span></button>
+    </div>
+    <button data-floor="0" class="building-button">View whole building</button>
+  </nav>
+  <section id="floorCaption" aria-live="polite">
+    <div class="tb-head"><span>Kantor Kita</span><span id="floorKicker">Sheet 03 / 04</span></div>
+    <h1 id="floorTitle">Room for everyone.</h1>
+    <p id="floorDescription">An open floor with four desk groups, a glass meeting room, phone booths, a pantry, a lounge and a prayer room.</p>
+    <p class="tb-foot">Interpreted floor plan · illustrative characters</p>
+  </section>
+  <section id="log" class="panel" aria-labelledby="logHeading">
+    <div class="log-head"><h2 id="logHeading">Office log</h2><span>Simulated activity</span></div>
+    <div id="logStats" class="log-stats" aria-label="Task summary"></div>
+    <button type="button" id="decisions" class="decisions" hidden></button>
+    <p id="logEmpty">No activity yet. The team starts moving on its own shortly.</p>
+    <ol id="logList"></ol>
+  </section>
+  <div id="followBar" class="panel" role="group" aria-label="Character camera" hidden><span id="followName"></span><button class="btn" id="fEyes" aria-pressed="false">Eyes</button><button class="btn" id="fChase" aria-pressed="false">Behind</button><button class="btn" id="fExit">Exit camera</button></div>
+  <section id="info" class="panel" aria-label="Team member details" hidden></section>
+  <div id="sceneStatus" role="status">Loading the office model…</div>
+  <footer id="controls" class="panel">
+    <div class="simulation-controls"><button class="btn" id="bPause" aria-pressed="false">Pause</button><button class="btn" id="bRoutine" aria-pressed="true">Routine: on</button><button class="btn" id="bLunch">Lunch</button><button class="btn" id="bRoof">To the rooftop</button><button class="btn" id="bPray">Prayer time</button><button class="btn" id="bWork">Back to work</button></div>
+    <div class="camera-controls"><button class="btn" id="bZoomIn" aria-label="Zoom in">+</button><button class="btn" id="bZoomOut" aria-label="Zoom out">−</button><button class="btn" id="bRotate" aria-label="Rotate camera">Rotate</button><button class="btn" id="bReset">Reset</button><button class="btn" id="bMusic" aria-pressed="false" aria-label="Play relaxing music">Music</button><label class="music-volume" for="musicVolume">Vol.<input type="range" id="musicVolume" min="0" max="100" value="25" aria-label="Music volume"></label></div>
+  </footer>
+  <p id="cameraHint">Drag to rotate · Shift + drag or right-click to pan · Scroll or pinch to zoom · Arrow keys to rotate</p>
+  <dialog id="taskDialog" aria-labelledby="taskHeading">
+    <header class="task-header"><div><h1 id="taskHeading">Office tasks</h1><p>Manage your team's work in the virtual office.</p></div><button type="button" id="closeTasks">Close</button></header>
+    <p class="task-note" id="taskNote">Status is changed by hand. Characters are a simulation and do not run AI yet.</p>
+    <p id="taskFeedback" role="status" aria-live="polite"></p>
+    <div class="task-layout">
+      <form id="taskForm"><h2>Create a task</h2><label for="taskTitle">Task</label><input id="taskTitle" required maxlength="160" placeholder="Example: Draft the content calendar">
+        <label for="taskAssignee">Assignee</label><select id="taskAssignee" required></select>
+        <label for="taskBrief">Instructions <span>(optional)</span></label><textarea id="taskBrief" rows="4" maxlength="5000" placeholder="Describe what is needed and the expected result"></textarea>
+        <button class="task-primary" type="submit">Add task</button><p class="task-note" id="saveNote">Saved in this browser. Export tasks to keep a copy.</p><button type="button" id="exportTasks">Export tasks</button>
+      </form>
+      <section aria-labelledby="taskListHeading"><h2 id="taskListHeading">Task list</h2>
+        <div class="task-filters"><div><label for="taskFilter">Status</label><select id="taskFilter"><option value="all">All statuses</option><option value="queued">Queued</option><option value="active">In progress</option><option value="blocked">Needs decision</option><option value="review">Needs review</option><option value="done">Done</option></select></div><div><label for="agentFilter">Assignee</label><select id="agentFilter"><option value="all">All characters</option></select></div></div>
+        <p id="taskSummary"></p><div id="taskList"></div>
+      </section>
+    </div>
+  </dialog>
+  <script src="tasks.js"></script>
+  <script src="music.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="office.js"></script>
+</body>
+</html>

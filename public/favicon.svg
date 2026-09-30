@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Kantor Kita</title>
+  <rect width="32" height="32" rx="7" fill="#385747"/>
+  <path d="M9 5h14v22H9z" fill="#fffcf5"/>
+  <path d="M12 8h8v3h-8zm0 5h8v3h-8zm0 5h8v3h-8zm2 5h4v4h-4z" fill="#385747"/>
+  <path d="M6 27h20" stroke="#debd8e" stroke-width="2" stroke-linecap="round"/>
+</svg>
