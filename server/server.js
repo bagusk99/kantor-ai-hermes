@@ -326,7 +326,7 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     const board = url.searchParams.get('board');
     if (board) {
       try {
-        const data = await apiFetch('GET', `/api/plugins/kanban/board?tenant=${encodeURIComponent(board)}`);
+        const data = await apiFetch('GET', `/api/plugins/kanban/board?board=${encodeURIComponent(board)}`);
         
         let allTasks = [];
         if (data.columns) {
@@ -371,8 +371,16 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
           triage: false
         };
         if (input.workspace) {
-           payload.workspace_kind = 'dir';
-           payload.workspace_path = input.workspace;
+          if (input.workspace === 'scratch') {
+            payload.workspace_kind = 'scratch';
+            payload.workspace_path = null;
+          } else if (input.workspace === 'worktree') {
+            payload.workspace_kind = 'worktree';
+            payload.workspace_path = input.absolutePath || null;
+          } else {
+            payload.workspace_kind = 'dir';
+            payload.workspace_path = input.absolutePath || input.workspace.replace(/^dir:/, '');
+          }
         }
         
         const data = await apiFetch('POST', `/api/plugins/kanban/tasks?board=${encodeURIComponent(board)}`, payload);

@@ -304,6 +304,7 @@
           boards.forEach(b => {
             const option = document.createElement('option');
             option.value = b.slug;
+            option.dataset.workdir = b.default_workdir || '';
             option.textContent = b.name + (b.is_current ? ' (Current)' : '');
             if (b.is_current) option.selected = true;
             select.append(option);
@@ -369,6 +370,21 @@
       el('taskFilter').onchange = render; el('agentFilter').onchange = render;
       const bs = document.getElementById('boardSelect');
       if (bs) bs.onchange = async () => { tasks = []; render(); const latest = await call('GET', '/api/tasks').catch(()=>[]); apply(latest); render(); };
+      
+      el('taskWorkspace').onchange = () => {
+        const ws = el('taskWorkspace').value;
+        const req = ws !== 'scratch';
+        el('taskAbsPathContainer').style.display = req ? 'block' : 'none';
+        const absInput = el('taskAbsPath');
+        absInput.required = req;
+        if (req && !absInput.value) {
+            if (bs && bs.selectedIndex >= 0) {
+               const opt = bs.options[bs.selectedIndex];
+               if (opt && opt.dataset.workdir) absInput.value = opt.dataset.workdir;
+            }
+        }
+      };
+
       el('taskForm').onsubmit = async event => {
         event.preventDefault();
         const title = el('taskTitle').value.trim();
@@ -376,6 +392,7 @@
         
         const assignee = el('taskAssignee').value;
         const workspace = el('taskWorkspace').value;
+        const absolutePath = el('taskAbsPath').value.trim();
         const board = document.getElementById('boardSelect')?.value;
         
         if (!board && !assignee) {
@@ -386,7 +403,7 @@
           el('taskAssignee').setCustomValidity('');
         }
         
-        const draft = {title, assignee, workspace, brief: el('taskBrief').value.trim(), status: 'queued', result: ''};
+        const draft = {title, assignee, workspace, absolutePath, brief: el('taskBrief').value.trim(), status: 'queued', result: ''};
         let task;
         if (server) {
           try { task = await call('POST', '/api/tasks', draft); tasks = [task, ...tasks]; if (task.status !== 'queued') changed(task.assignee, task.status, task.title); }
@@ -396,6 +413,9 @@
           if (!persist([task, ...tasks])) return;
         }
         el('taskTitle').value = ''; el('taskBrief').value = '';
+        el('taskAbsPath').value = '';
+        el('taskWorkspace').value = 'scratch';
+        if (el('taskWorkspace').onchange) el('taskWorkspace').onchange();
         el('agentFilter').value = 'all'; el('taskFilter').value = 'all';
         render(); 
         const msgName = task.assignee ? displayName(task.assignee) : 'dispatcher';
