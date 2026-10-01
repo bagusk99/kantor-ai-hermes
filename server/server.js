@@ -17,6 +17,55 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const ROOT = path.resolve(__dirname, '..');
+
+let dashboardToken = null;
+async function getHermesToken() {
+  if (dashboardToken) return dashboardToken;
+  try {
+    const res = await fetch('http://127.0.0.1:9119/');
+    if (!res.ok) throw new Error('Cannot reach dashboard');
+    const text = await res.text();
+    const match = text.match(/window\.__HERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/);
+    if (match) {
+      dashboardToken = match[1];
+      return dashboardToken;
+    }
+    throw new Error('Token not found in HTML');
+  } catch (err) {
+    return null;
+  }
+}
+
+async function apiFetch(method, path, body = null) {
+  let token = await getHermesToken();
+  if (!token) throw new Error('No Hermes session token');
+  
+  const doFetch = async (t) => {
+    const headers = { 'Authorization': `Bearer ${t}` };
+    const opts = { method, headers };
+    if (body) {
+      headers['content-type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(`http://127.0.0.1:9119${path}`, opts);
+  };
+  
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    dashboardToken = null;
+    token = await getHermesToken();
+    if (token) res = await doFetch(token);
+  }
+  
+  if (!res.ok) {
+    let errText = '';
+    try { errText = await res.text(); } catch(e){}
+    throw new Error(`Hermes API Error ${res.status}: ${errText}`);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
 try { process.loadEnvFile(process.env.ENV_FILE || path.join(ROOT, '.env')); } catch { /* no .env file: dry run */ }
 
 const agents = require('./agents');
@@ -52,34 +101,33 @@ let teamOverrides = {};
 try { teamOverrides = JSON.parse(fs.readFileSync('data/team-overrides.json', 'utf8')); } catch(e) {}
 
 let TEAM_PROFILES = [];
-function rebuildTeam() {
+const MEMBERS = new Set();
+async function rebuildTeam() {
   TEAM_PROFILES = [];
   try {
-    const out = cp.execSync('hermes profile list', {encoding: 'utf8'});
-    const lines = out.split('\n');
-    let started = false;
+    const data = await apiFetch('GET', '/api/profiles');
+    if (!data || !data.profiles) return;
     let c = 0;
-    for (const line of lines) {
-      if (line.includes('───')) { started = true; continue; }
-      if (started && line.trim()) {
-        let profileName = line.trim().split(/\s+/)[0];
-        if (profileName.startsWith('◆')) profileName = profileName.substring(1);
-        if (profileName !== 'default') {
-          c++;
-          TEAM_PROFILES.push({
-            n: profileName,
-            initials: profileName.substring(0, 2).toUpperCase(),
-            gender: c % 2 === 0 ? 'female' : 'male',
-            role: 'AI Agent',
-            group: teamOverrides[profileName]?.group || (profileName === 'techlead' ? 'leadership' : 'engineering')
-          });
-        }
+    for (const p of data.profiles) {
+      if (p.name !== 'default') {
+        c++;
+        TEAM_PROFILES.push({
+          n: p.name,
+          initials: p.name.substring(0, 2).toUpperCase(),
+          gender: c % 2 === 0 ? 'female' : 'male',
+          role: 'AI Agent',
+          group: teamOverrides[p.name]?.group || (p.name === 'techlead' ? 'leadership' : 'engineering')
+        });
       }
     }
-  } catch(e) {}
+  } catch(e) {
+    console.error('Failed to load profiles:', e.message);
+  }
+  MEMBERS.clear();
+  TEAM_PROFILES.forEach(p => MEMBERS.add(p.n));
 }
-rebuildTeam();
-const MEMBERS = new Set(TEAM_PROFILES.map(p => p.n));
+// Note: initial call is deferred to server start.
+
 const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 
 // ---- agent worker: one task at a time per connected member, oldest first ----
@@ -154,17 +202,12 @@ function newTask(input) {
 }
 async function api(req, res, url) {
     if (url.pathname === '/api/boards' && req.method === 'GET') {
-    return new Promise(resolve => {
-      require('node:child_process').exec('hermes kanban boards list --json', (err, stdout) => {
-        if (err) return resolve(send(res, 200, []));
-        try {
-          const boards = JSON.parse(stdout);
-          resolve(send(res, 200, boards));
-        } catch(e) {
-          resolve(send(res, 200, []));
-        }
-      });
-    });
+    try {
+      const data = await apiFetch('GET', '/api/plugins/kanban/boards');
+      return send(res, 200, data.boards || []);
+    } catch (e) {
+      return send(res, 200, []);
+    }
   }
   if (url.pathname === '/api/team' && req.method === 'GET') {
     return send(res, 200, TEAM_PROFILES);
@@ -205,12 +248,16 @@ async function api(req, res, url) {
   if (profileMatch && req.method === 'DELETE') {
     const name = decodeURIComponent(profileMatch[1]);
     try {
+      // Deletion is not easily exposed via GET/PATCH on profiles plugin API, 
+      // but if the UI needs it, we leave this as execSync for now, 
+      // or map it if Hermes expose DELETE /api/profiles/:name. 
+      // Since it's a destructive op on the file system, fallback to CLI if API is not available.
       cp.execSync(`hermes profile delete -y "${name.replace(/"/g, '')}"`, {stdio: 'pipe'});
       if (teamOverrides[name]) {
         delete teamOverrides[name];
         fs.writeFileSync('data/team-overrides.json', JSON.stringify(teamOverrides));
       }
-      rebuildTeam();
+      await rebuildTeam();
       return send(res, 200, { success: true });
     } catch(e) {
       return send(res, 500, {error: String(e.stderr || e.message)});
@@ -223,27 +270,24 @@ async function api(req, res, url) {
     try {
       if (input.name && input.name !== name) {
         cp.execSync(`hermes profile rename "${name}" "${input.name.replace(/"/g, '')}"`, {stdio: 'pipe'});
-        
-        // Update local overrides if exists
         if (teamOverrides[name]) {
           teamOverrides[input.name] = teamOverrides[name];
           delete teamOverrides[name];
           fs.writeFileSync('data/team-overrides.json', JSON.stringify(teamOverrides));
         }
-        
-        name = input.name; // Use new name for subsequent commands
+        name = input.name; 
       }
       if (input.description !== undefined) {
-        cp.execSync(`hermes profile describe "${name}" --text "${input.description.replace(/"/g, '\\"')}"`);
+        await apiFetch('PATCH', `/api/plugins/kanban/profiles/${encodeURIComponent(name)}`, {description: input.description});
       }
       if (input.soul !== undefined) {
-        const show = cp.execSync(`hermes profile show "${name}"`, {encoding: 'utf8'});
-        const pathMatch = show.match(/Path:\s+(.+)/);
-        if (pathMatch) {
-          fs.writeFileSync(path.join(pathMatch[1], 'SOUL.md'), input.soul);
+        const data = await apiFetch('GET', '/api/profiles');
+        const prof = (data.profiles || []).find(p => p.name === name);
+        if (prof && prof.path) {
+          fs.writeFileSync(path.join(prof.path, 'SOUL.md'), input.soul);
         }
       }
-      rebuildTeam();
+      await rebuildTeam();
       return send(res, 200, { success: true });
     } catch(e) {
       return send(res, 500, {error: e.message});
@@ -253,17 +297,18 @@ async function api(req, res, url) {
   if (url.pathname === '/api/profiles' && req.method === 'POST') {
     const input = await readJson(req);
     try {
+      // Profile creation is typically CLI
       let cmd = `hermes profile create "${input.name.replace(/"/g, '')}"`;
       if (input.description) cmd += ` --description "${input.description.replace(/"/g, '\\"')}"`;
       cp.execSync(cmd, {stdio: 'pipe'});
       if (input.soul) {
-        const show = cp.execSync(`hermes profile show "${input.name}"`, {encoding: 'utf8'});
-        const pathMatch = show.match(/Path:\s+(.+)/);
-        if (pathMatch) {
-          fs.writeFileSync(path.join(pathMatch[1], 'SOUL.md'), input.soul);
+        const data = await apiFetch('GET', '/api/profiles');
+        const prof = (data.profiles || []).find(p => p.name === input.name);
+        if (prof && prof.path) {
+          fs.writeFileSync(path.join(prof.path, 'SOUL.md'), input.soul);
         }
       }
-      rebuildTeam();
+      await rebuildTeam();
       return send(res, 200, { success: true });
     } catch(e) {
       return send(res, 500, {error: String(e.stderr || e.message)});
@@ -281,43 +326,17 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     const board = url.searchParams.get('board');
     if (board) {
       try {
-        const hTasks = await execHermes(['kanban', '--board', board, 'list', '--json']);
+        const data = await apiFetch('GET', `/api/plugins/kanban/board?tenant=${encodeURIComponent(board)}`);
         
-        const summaries = {};
-        try {
-          const { DatabaseSync } = require('node:sqlite');
-          const os = require('node:os');
-          const dbPath = path.join(process.env.HERMES_HOME || path.join(os.homedir(), '.hermes'), 'kanban', 'boards', board, 'kanban.db');
-          if (fs.existsSync(dbPath)) {
-            const db = new DatabaseSync(dbPath);
-            const runs = db.prepare('SELECT task_id, summary FROM task_runs WHERE summary IS NOT NULL ORDER BY id DESC').all();
-            for (const run of runs) {
-              if (!summaries[run.task_id]) summaries[run.task_id] = run.summary;
-            }
-            db.close();
-          }
-        } catch (e) {
-          console.error("Failed to query kanban.db:", e);
+        let allTasks = [];
+        if (data.columns) {
+          data.columns.forEach(col => {
+            if (col.tasks) allTasks = allTasks.concat(col.tasks);
+          });
         }
-
-        hTasks.forEach(t => {
-          t.latest_summary = summaries[t.id];
-          if (t.status === 'running') {
-            try {
-              const os = require('node:os');
-              const path = require('node:path');
-              const fs = require('node:fs');
-              const logFile = path.join(process.env.HERMES_HOME || path.join(os.homedir(), '.hermes'), 'kanban', 'boards', board, 'logs', t.id + '.log');
-              if (fs.existsSync(logFile)) {
-                const logContent = fs.readFileSync(logFile, 'utf8');
-                t.live_log = logContent.length > 5000 ? logContent.slice(-5000) : logContent;
-              }
-            } catch (e) {}
-          }
-        });
-
+        
         const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
-        const mapped = hTasks.map(t => {
+        const mapped = allTasks.map(t => {
           const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (t.assignee || '').toLowerCase()) || t.assignee || '';
           return {
             id: t.id,
@@ -329,7 +348,7 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             questions: statusMap[t.status] === 'blocked' ? (t.latest_summary || '') : undefined,
             createdAt: new Date(t.created_at * 1000).toISOString(),
             error: t.last_failure_error || undefined,
-            workerLog: statusMap[t.status] === 'active' ? (t.live_log || undefined) : (t.latest_summary || undefined)
+            workerLog: statusMap[t.status] === 'active' ? (t.latest_summary || undefined) : (t.latest_summary || undefined)
           };
         });
         return send(res, 200, mapped);
@@ -345,16 +364,19 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     const board = url.searchParams.get('board');
     if (board) {
       try {
-        const args = ['kanban', '--board', board, 'create', '--json', '--triage'];
-        if (input.assignee) args.push('--assignee', input.assignee);
-        if (input.brief) args.push('--body', input.brief);
-        if (input.workspace) args.push('--workspace', input.workspace);
-        args.push(input.title);
-        const newTask = await execHermes(args);
+        const payload = {
+          title: input.title,
+          body: input.brief || null,
+          assignee: input.assignee || null,
+          triage: false
+        };
+        if (input.workspace) {
+           payload.workspace_kind = 'dir';
+           payload.workspace_path = input.workspace;
+        }
         
-        // Fetch updated task list to find it (in case we need full structure)
-        const updatedTaskList = await execHermes(['kanban', '--board', board, 'list', '--json']);
-        const hTask = updatedTaskList.find(t => t.id === newTask.id) || newTask;
+        const data = await apiFetch('POST', `/api/plugins/kanban/tasks?board=${encodeURIComponent(board)}`, payload);
+        const hTask = data.task;
         
         const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
         const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (hTask.assignee || '').toLowerCase()) || hTask.assignee || '';
@@ -409,54 +431,40 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     const board = url.searchParams.get('board');
     if (board) {
       try {
+        const taskId = match[1];
         if (input.action === 'answer') {
            const answerText = typeof input.answer === 'string' ? input.answer.trim().slice(0, 3000) : '';
            if (answerText) {
-             await execHermes(['kanban', '--board', board, 'comment', match[1], '--author', 'user', answerText]);
+             await apiFetch('POST', `/api/plugins/kanban/tasks/${taskId}/comments?board=${encodeURIComponent(board)}`, {text: answerText, author: 'user'});
            }
-           await execHermes(['kanban', '--board', board, 'unblock', match[1]]).catch(()=>{});
+           await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'ready'});
         } else if (input.action === 'revise') {
            const feedbackText = typeof input.feedback === 'string' ? input.feedback.trim().slice(0, 5000) : 'Please revise.';
-           await execHermes(['kanban', '--board', board, 'request-changes', match[1], feedbackText]);
+           await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'todo', body: feedbackText});
         } else if (input.action === 'approve') {
-           await execHermes(['kanban', '--board', board, 'complete', match[1], '--result', 'Approved', '--force']);
+           await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'done', result: 'Approved'});
         } else if (input.action === 'archive') {
-           await execHermes(['kanban', '--board', board, 'archive', match[1]]);
-           return send(res, 200, {id: match[1], archived: true});
+           await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'archived'});
+           return send(res, 200, {id: taskId, archived: true});
         }
 
         if (input.assignee !== undefined) {
-           await execHermes(['kanban', '--board', board, 'assign', match[1], input.assignee]);
+           await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {assignee: input.assignee});
         }
         if (input.status === 'done') {
-           await execHermes(['kanban', '--board', board, 'complete', match[1], '--result', input.result || 'done', '--force']);
+           await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'done', result: input.result || 'done'});
         } else if (input.status === 'queued') {
-           await execHermes(['kanban', '--board', board, 'unblock', match[1]]).catch(()=>{});
+           await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'ready'});
         } else if (input.status === 'review') {
-           await execHermes(['kanban', '--board', board, 'request-review', match[1]]).catch(()=>{});
+           await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'review'});
         }
         
-        const updatedTaskList = await execHermes(['kanban', '--board', board, 'list', '--json']);
-        const hTask = updatedTaskList.find(t => t.id === match[1]);
+        const data = await apiFetch('GET', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`);
+        const hTask = data.task;
+        
         if (hTask) {
           const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
-          let summary = '';
-          let live_log = '';
-          if (statusMap[hTask.status] === 'blocked' || statusMap[hTask.status] === 'review') {
-            const details = await execHermes(['kanban', '--board', board, 'show', match[1], '--json']).catch(()=>null);
-            summary = details ? details.latest_summary : '';
-          } else if (statusMap[hTask.status] === 'active') {
-            try {
-              const os = require('node:os');
-              const path = require('node:path');
-              const fs = require('node:fs');
-              const logFile = path.join(process.env.HERMES_HOME || path.join(os.homedir(), '.hermes'), 'kanban', 'boards', board, 'logs', hTask.id + '.log');
-              if (fs.existsSync(logFile)) {
-                const logContent = fs.readFileSync(logFile, 'utf8');
-                live_log = logContent.length > 5000 ? logContent.slice(-5000) : logContent;
-              }
-            } catch (e) {}
-          }
+          let summary = hTask.latest_summary || '';
           const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (hTask.assignee || '').toLowerCase()) || hTask.assignee || '';
           return send(res, 200, {
             id: hTask.id,
@@ -468,10 +476,10 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             questions: statusMap[hTask.status] === 'blocked' ? summary : undefined,
             createdAt: new Date(hTask.created_at * 1000).toISOString(),
             error: hTask.last_failure_error || undefined,
-            workerLog: statusMap[hTask.status] === 'active' ? (live_log || undefined) : (summary || undefined)
+            workerLog: statusMap[hTask.status] === 'active' ? summary : summary
           });
         }
-        return send(res, 200, {id: match[1]});
+        return send(res, 200, {id: taskId});
       } catch (e) {
         return send(res, 500, {error: e.message});
       }
@@ -530,10 +538,13 @@ const server = http.createServer(async (req, res) => {
   try { await api(req, res, url); }
   catch (error) { send(res, error.status || 500, {error: error.status ? error.message : 'Server error.'}); if (!error.status) console.error(error); }
 });
-server.listen(PORT, HOST, () => {
+server.listen(PORT, HOST, async () => {
   console.log(`Kantor Kita: http://${HOST}:${PORT}`);
-  console.log(DRY_RUN ? 'AI agents: dry run (set ANTHROPIC_API_KEY in .env to use Claude)' : `AI agents: ${Object.entries(agents).map(([name, a]) => `${name} → ${modelOf(a)}`).join(', ')}`);
-  // Tasks left active by a previous run go back to the queue and are picked up again.
-  let reset = false; tasks.forEach(task => { if (task.status === 'active' && agents[task.assignee]) { task.status = 'queued'; reset = true; } }); if (reset) save();
-  kick();
+  console.log('AI agents: Using Hermes gateway. Trying to reach dashboard at 9119...');
+  try {
+    await rebuildTeam();
+    console.log('Profiles initialized.');
+  } catch (e) {
+    console.log('Could not load profiles (dashboard might not be running yet).');
+  }
 });
