@@ -31,7 +31,7 @@ dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max
   flex: 1;
 }
 .kanban-column {
-  flex: 0 0 280px;
+  flex: 0 0 380px;
   background: var(--paper);
   border-radius: 8px;
   padding: 12px;
