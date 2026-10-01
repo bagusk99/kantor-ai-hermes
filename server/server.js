@@ -175,13 +175,26 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
       try {
         const hTasks = await execHermes(['kanban', '--board', board, 'list', '--json']);
         
-        const summaryPromises = hTasks.filter(t => t.status === 'blocked' || t.status === 'review').map(async t => {
-          try {
-            const details = await execHermes(['kanban', '--board', board, 'show', t.id, '--json']);
-            t.latest_summary = details.latest_summary;
-          } catch(e) {}
+        const summaries = {};
+        try {
+          const { DatabaseSync } = require('node:sqlite');
+          const os = require('node:os');
+          const dbPath = path.join(process.env.HERMES_HOME || path.join(os.homedir(), '.hermes'), 'kanban', 'boards', board, 'kanban.db');
+          if (fs.existsSync(dbPath)) {
+            const db = new DatabaseSync(dbPath);
+            const runs = db.prepare('SELECT task_id, summary FROM task_runs WHERE summary IS NOT NULL ORDER BY id DESC').all();
+            for (const run of runs) {
+              if (!summaries[run.task_id]) summaries[run.task_id] = run.summary;
+            }
+            db.close();
+          }
+        } catch (e) {
+          console.error("Failed to query kanban.db:", e);
+        }
+
+        hTasks.forEach(t => {
+          t.latest_summary = summaries[t.id];
         });
-        await Promise.all(summaryPromises);
 
         const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
         const mapped = hTasks.map(t => {
