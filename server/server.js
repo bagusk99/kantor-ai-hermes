@@ -1,6 +1,16 @@
 // Kantor Kita server: serves public/ and a small task API. Tasks assigned to a connected
 // team member (server/agents.js) are worked by Claude, or by a labelled dry run when no API key is set.
 // No login yet, so it only listens on this machine.
+
+const cp = require('node:child_process');
+function execHermes(args) {
+  return new Promise((resolve, reject) => {
+    cp.execFile('hermes', args, (err, stdout) => {
+      if (err) return reject(err);
+      try { resolve(JSON.parse(stdout)); } catch (e) { resolve({}); }
+    });
+  });
+}
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -126,9 +136,65 @@ async function api(req, res, url) {
   }
   if (url.pathname === '/api/agents' && req.method === 'GET')
     return send(res, 200, {mode: DRY_RUN ? 'dry-run' : 'claude', model: DRY_RUN ? null : MODEL, members: Object.fromEntries(Object.entries(agents).map(([name, a]) => [name, {role: a.role, model: modelOf(a)}]))});
-  if (url.pathname === '/api/tasks' && req.method === 'GET') return send(res, 200, tasks);
+if (url.pathname === '/api/tasks' && req.method === 'GET') {
+    const board = url.searchParams.get('board');
+    if (board) {
+      try {
+        const hTasks = await execHermes(['kanban', '--board', board, 'list', '--json']);
+        const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
+        const mapped = hTasks.map(t => {
+          const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (t.assignee || '').toLowerCase()) || t.assignee || '';
+          return {
+            id: t.id,
+            title: t.title,
+            brief: t.body || '',
+            assignee: matchedAssignee,
+            status: statusMap[t.status] || 'queued',
+            result: t.result || '',
+            createdAt: new Date(t.created_at * 1000).toISOString(),
+            error: t.last_failure_error || undefined
+          };
+        });
+        return send(res, 200, mapped);
+      } catch (e) {
+        return send(res, 200, []);
+      }
+    }
+    return send(res, 200, tasks);
+  }
+
   if (url.pathname === '/api/tasks' && req.method === 'POST') {
-    const input=await readJson(req);
+    const input = await readJson(req);
+    const board = url.searchParams.get('board');
+    if (board) {
+      try {
+        const args = ['kanban', '--board', board, 'create', '--json'];
+        if (input.assignee) args.push('--assignee', input.assignee);
+        if (input.brief) args.push('--body', input.brief);
+        args.push(input.title);
+        const newTask = await execHermes(args);
+        
+        // Fetch updated task list to find it (in case we need full structure)
+        const updatedTaskList = await execHermes(['kanban', '--board', board, 'list', '--json']);
+        const hTask = updatedTaskList.find(t => t.id === newTask.id) || newTask;
+        
+        const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
+        const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (hTask.assignee || '').toLowerCase()) || hTask.assignee || '';
+        
+        return send(res, 201, {
+          id: hTask.id,
+          title: hTask.title,
+          brief: hTask.body || '',
+          assignee: matchedAssignee,
+          status: statusMap[hTask.status] || 'queued',
+          result: hTask.result || '',
+          createdAt: hTask.created_at ? new Date(hTask.created_at * 1000).toISOString() : new Date().toISOString()
+        });
+      } catch (e) {
+        return send(res, 500, {error: e.message});
+      }
+    }
+    
     if(input?.status!==undefined&&!STATES.has(input.status))return send(res,400,{error:'Unknown status.'});
     const task = newTask(input); if (!task) return send(res, 400, {error: 'A task needs a title and an assignee.'});
     if(!MEMBERS.has(task.assignee))return send(res,400,{error:'Unknown assignee.'});
@@ -170,10 +236,50 @@ async function api(req, res, url) {
     tasks.forEach(task => { if (task.status === 'active') task.status = 'queued'; });
     save(); kick(); return send(res, 201, tasks);
   }
-  const match = url.pathname.match(/^\/api\/tasks\/([0-9a-f-]{36})$/);
+  const match = url.pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)$/);
   if (match && req.method === 'PATCH') {
+    const input = await readJson(req);
+    const board = url.searchParams.get('board');
+    if (board) {
+      try {
+        if (input.assignee !== undefined) {
+           await execHermes(['kanban', '--board', board, 'assign', match[1], input.assignee]);
+        }
+        if (input.status === 'done') {
+           await execHermes(['kanban', '--board', board, 'complete', match[1], '--result', input.result || 'done', '--force']);
+        } else if (input.status === 'queued') {
+           // No direct command to move back to queue, fallback to unblock or similar? 
+           // We can just ignore queued for Hermes tasks since Hermes manages it.
+           // However, if we need to promote a blocked task, we could use unblock.
+           await execHermes(['kanban', '--board', board, 'unblock', match[1]]).catch(()=>{});
+        } else if (input.status === 'review') {
+           await execHermes(['kanban', '--board', board, 'request-review', match[1]]).catch(()=>{});
+        }
+        
+        // Fetch updated task to return to UI
+        const updatedTaskList = await execHermes(['kanban', '--board', board, 'list', '--json']);
+        const hTask = updatedTaskList.find(t => t.id === match[1]);
+        if (hTask) {
+          const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
+          const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (hTask.assignee || '').toLowerCase()) || hTask.assignee || '';
+          return send(res, 200, {
+            id: hTask.id,
+            title: hTask.title,
+            brief: hTask.body || '',
+            assignee: matchedAssignee,
+            status: statusMap[hTask.status] || 'queued',
+            result: hTask.result || '',
+            createdAt: new Date(hTask.created_at * 1000).toISOString(),
+            error: hTask.last_failure_error || undefined
+          });
+        }
+        return send(res, 200, {id: match[1]});
+      } catch (e) {
+        return send(res, 500, {error: e.message});
+      }
+    }
     const task = tasks.find(t => t.id === match[1]); if (!task) return send(res, 404, {error: 'Task not found.'});
-    const input = await readJson(req), change = {};
+    let change = {};
     if(!input||typeof input!=='object')return send(res,400,{error:'Expected an object.'});
     // Answering an agent's questions adds the answers to the brief and puts the task back in its queue.
     if(input.action==='answer'){

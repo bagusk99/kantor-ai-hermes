@@ -30,6 +30,10 @@
   async function call(method, path, body) {
     const write=method!=='GET';if(write){mutation++;writing++;}
     try{
+      const board = document.getElementById('boardSelect')?.value;
+      if (board) {
+        path += (path.includes('?') ? '&' : '?') + 'board=' + encodeURIComponent(board);
+      }
       const response=await fetch(path,{method,headers:{'content-type':'application/json'},body:body&&JSON.stringify(body)});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(data.error||`Server error ${response.status}`);
@@ -145,6 +149,7 @@
     article.append(actions);
   }
   const announce = () => document.dispatchEvent(new CustomEvent('officetasks:change'));
+  let expandedTaskId = null;
   function render() {
     const focused=el('taskList').contains(document.activeElement)&&document.activeElement.tagName==='TEXTAREA'?{id:document.activeElement.id,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd}:null;
     announce();
@@ -153,53 +158,79 @@
     el('taskCount').textContent = tasks.length - done;
     el('taskSummary').textContent = `${tasks.length} tasks · ${done} done`;
     el('exportTasks').disabled = tasks.length === 0;
+
+    const cols = {
+      queued: node('div', undefined, 'kanban-column'),
+      active: node('div', undefined, 'kanban-column'),
+      blocked: node('div', undefined, 'kanban-column'),
+      review: node('div', undefined, 'kanban-column'),
+      done: node('div', undefined, 'kanban-column')
+    };
+    Object.keys(cols).forEach(s => {
+      cols[s].append(node('h3', states[s], 'kanban-col-title'));
+      list.append(cols[s]);
+    });
+
     const visible = tasks.filter(t => (el('taskFilter').value === 'all' || t.status === el('taskFilter').value) &&
       (el('agentFilter').value === 'all' || t.assignee === el('agentFilter').value));
-    if (!visible.length) list.append(node('p', tasks.length ? 'No tasks match this filter.' : 'No tasks yet. Add the first job for your team.', 'task-empty'));
+    
     for (const task of visible) {
-      const article = node('article', undefined, 'task-item');
       const agent = agentFor(task.assignee);
-      article.append(node('h3', task.title), node('div', `${displayName(task.assignee)} · ${states[task.status]}${agent ? ` · AI agent${agent.mode === 'claude' ? ` · ${agent.model}` : ''}` : ''}`, 'task-meta'));
-      if (task.brief) article.append(node('p', task.brief));
-      if(task.history?.length){const history=node('details'),summary=node('summary',`Draft history (${task.history.length})`);history.append(summary);task.history.forEach((draft,i)=>{history.append(node('h4',`Draft ${i+1} · ${draft.by||'Saved'}`));if(draft.feedback)history.append(node('p',`Revision brief: ${draft.feedback}`));history.append(node('div',draft.result,'task-result'));});article.append(history);}
-      const actions = node('div', undefined, 'task-actions');
-      if (!team.some(person => person.n === task.assignee)) {
-        article.append(node('p', 'This assignee comes from an old prototype. Pick a team member to continue.'));
-        const select = node('select'); select.setAttribute('aria-label', `New assignee for ${task.title}`);
-        for (const person of team) { const option = node('option', displayName(person.n)); option.value = person.n; select.append(option); }
-        actions.append(action('Move task', () => reassign(task.id, select.value)));
-        if (task.result) article.append(node('div', task.result, 'task-result'));
-        article.append(select, actions); list.append(article); continue;
+      const card = node('div', undefined, 'kanban-card');
+      card.onclick = (e) => {
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.closest('form')) return;
+        expandedTaskId = expandedTaskId === task.id ? null : task.id;
+        render();
+      };
+      card.append(node('h4', task.title), node('div', `${displayName(task.assignee)}${agent ? ` · AI agent` : ''}`, 'task-meta'));
+      
+      if (expandedTaskId === task.id) {
+        const article = node('article', undefined, 'task-item');
+        article.onclick = e => e.stopPropagation();
+        if (task.brief) article.append(node('p', task.brief));
+        if(task.history?.length){const history=node('details'),summary=node('summary',`Draft history (${task.history.length})`);history.append(summary);task.history.forEach((draft,i)=>{history.append(node('h4',`Draft ${i+1} · ${draft.by||'Saved'}`));if(draft.feedback)history.append(node('p',`Revision brief: ${draft.feedback}`));history.append(node('div',draft.result,'task-result'));});article.append(history);}
+        const actions = node('div', undefined, 'task-actions');
+        if (!team.some(person => person.n === task.assignee)) {
+          article.append(node('p', 'This assignee comes from an old prototype. Pick a team member to continue.'));
+          const select = node('select'); select.setAttribute('aria-label', `New assignee for ${task.title}`);
+          for (const person of team) { const option = node('option', displayName(person.n)); option.value = person.n; select.append(option); }
+          actions.append(action('Move task', () => reassign(task.id, select.value)));
+          if (task.result) article.append(node('div', task.result, 'task-result'));
+          article.append(select, actions); card.append(article);
+          if(cols[task.status]) cols[task.status].append(card); continue;
+        }
+        actions.append(action('Show character', () => { el('taskDialog').close(); locate(task.assignee); }));
+        if (agent) { agentActions(task, article, actions); card.append(article); if(cols[task.status]) cols[task.status].append(card); continue; }
+        if(task.status==='review'){reviewControls(task,article);article.append(actions);card.append(article); if(cols[task.status]) cols[task.status].append(card); continue;}
+        if (task.status === 'queued') actions.append(action('Start task', () => update(task.id, 'active')));
+        if (task.status === 'active') {
+          actions.append(action('Back to queue', () => update(task.id, 'queued')));
+          const form = node('form');
+          const label = node('label', 'Result'); label.htmlFor = `result-${task.id}`;
+          const input = node('textarea'); input.id = label.htmlFor; input.required = true; input.maxLength = 10000; input.rows = 3;
+          const key=draftKey(task,'result');input.value=draftRead(key);
+          input.placeholder = 'Write the result or a document link before finishing the task';
+          const submit = node('button', 'Save result & finish'); submit.type = 'submit'; submit.className = 'task-primary';
+          const footer = node('div', undefined, 'task-actions'); footer.append(submit);
+          form.append(label, input, footer);
+          form.onsubmit = event => {
+            event.preventDefault();
+            if (!input.value.trim()) { input.setCustomValidity('Fill in the result first.'); input.reportValidity(); return; }
+            update(task.id, 'done', input.value.trim());
+          };
+          input.oninput = () => {input.setCustomValidity('');draftWrite(key,input.value);};
+          article.append(actions, form);
+        } else {
+          if (task.status === 'done') article.append(node('div', task.result, 'task-result'));
+          article.append(actions);
+        }
+        card.append(article);
       }
-      actions.append(action('Show character', () => { el('taskDialog').close(); locate(task.assignee); }));
-      if (agent) { agentActions(task, article, actions); list.append(article); continue; }
-      if(task.status==='review'){reviewControls(task,article);article.append(actions);list.append(article);continue;}
-      if (task.status === 'queued') actions.append(action('Start task', () => update(task.id, 'active')));
-      if (task.status === 'active') {
-        actions.append(action('Back to queue', () => update(task.id, 'queued')));
-        const form = node('form');
-        const label = node('label', 'Result'); label.htmlFor = `result-${task.id}`;
-        const input = node('textarea'); input.id = label.htmlFor; input.required = true; input.maxLength = 10000; input.rows = 3;
-        const key=draftKey(task,'result');input.value=draftRead(key);
-        input.placeholder = 'Write the result or a document link before finishing the task';
-        const submit = node('button', 'Save result & finish'); submit.type = 'submit'; submit.className = 'task-primary';
-        const footer = node('div', undefined, 'task-actions'); footer.append(submit);
-        form.append(label, input, footer);
-        form.onsubmit = event => {
-          event.preventDefault();
-          if (!input.value.trim()) { input.setCustomValidity('Fill in the result first.'); input.reportValidity(); return; }
-          update(task.id, 'done', input.value.trim());
-        };
-        input.oninput = () => {input.setCustomValidity('');draftWrite(key,input.value);};
-        article.append(actions, form);
-      } else {
-        if (task.status === 'done') article.append(node('div', task.result, 'task-result'));
-        article.append(actions);
-      }
-      list.append(article);
+      if(cols[task.status]) cols[task.status].append(card);
     }
     if(focused){const input=document.getElementById(focused.id);if(input){input.focus({preventScroll:true});input.setSelectionRange(focused.start,focused.end);}}
   }
+
   // Look for the server once at start. A static host (or no server) keeps the browser-only behaviour.
   async function connect() {
     let info;
@@ -280,6 +311,8 @@
       }
       el('closeTasks').onclick = () => el('taskDialog').close();
       el('taskFilter').onchange = render; el('agentFilter').onchange = render;
+      const bs = document.getElementById('boardSelect');
+      if (bs) bs.onchange = async () => { tasks = []; render(); const latest = await call('GET', '/api/tasks').catch(()=>[]); apply(latest); render(); };
       el('taskForm').onsubmit = async event => {
         event.preventDefault();
         const title = el('taskTitle').value.trim();

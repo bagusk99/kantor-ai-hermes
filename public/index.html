@@ -21,7 +21,7 @@
       <div class="team-picker"><label for="teamSelect">Team member</label><select id="teamSelect"><option value="">Pick initials</option></select></div>
       <div id="teamFaces" aria-label="Team members"></div>
       <button id="bLog" class="btn" aria-controls="log" aria-expanded="true">Log</button>
-      <button id="bTasks" class="btn primary">Tasks <span id="taskCount">0</span></button>
+      <button id="bTasks" class="btn primary">Kanban <span id="taskCount">0</span></button>
     </div>
   </header>
   <nav id="floors" aria-label="Choose a floor">
@@ -65,9 +65,9 @@
         <label for="taskBrief">Instructions <span>(optional)</span></label><textarea id="taskBrief" rows="4" maxlength="5000" placeholder="Describe what is needed and the expected result"></textarea>
         <button class="task-primary" type="submit">Add task</button><p class="task-note" id="saveNote">Saved in this browser. Export tasks to keep a copy.</p><button type="button" id="exportTasks">Export tasks</button>
       </form>
-      <section aria-labelledby="taskListHeading"><h2 id="taskListHeading">Task list</h2>
+      <section aria-labelledby="taskListHeading" class="kanban-section"><h2 id="taskListHeading" class="sr-only">Kanban Board</h2>
         <div class="task-filters"><div><label for="taskFilter">Status</label><select id="taskFilter"><option value="all">All statuses</option><option value="queued">Queued</option><option value="active">In progress</option><option value="blocked">Needs decision</option><option value="review">Needs review</option><option value="done">Done</option></select></div><div><label for="agentFilter">Assignee</label><select id="agentFilter"><option value="all">All characters</option></select></div></div>
-        <p id="taskSummary"></p><div id="taskList"></div>
+        <p id="taskSummary"></p><div id="taskList" class="kanban-board"></div>
       </section>
     </div>
   </dialog>
