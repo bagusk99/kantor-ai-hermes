@@ -66,7 +66,7 @@ try {
           initials: profileName.substring(0, 2).toUpperCase(),
           gender: c % 2 === 0 ? 'female' : 'male',
           role: 'AI Agent',
-          group: 'engineering'
+          group: profileName === 'techlead' ? 'leadership' : 'engineering'
         });
       }
     }
