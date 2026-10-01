@@ -47,7 +47,32 @@ function save() {
   } catch(error) { tasks=JSON.parse(durable); throw error; }
 }
 const now = () => new Date().toISOString();
-const MEMBERS = new Set(['Koh Arman','Koh Wira','Kak Rani','Kak Dewi','Mira','Tari','Bagas Pratama Putra','Rizky Hakim','Yoga','Bang Eko','Gilang','Kak Sinta','Kak Laras']);
+
+let TEAM_PROFILES = [];
+try {
+  const out = cp.execSync('hermes profile list', {encoding: 'utf8'});
+  const lines = out.split('\n');
+  let started = false;
+  let c = 0;
+  for (const line of lines) {
+    if (line.includes('───')) { started = true; continue; }
+    if (started && line.trim()) {
+      let profileName = line.trim().split(/\s+/)[0];
+      if (profileName.startsWith('◆')) profileName = profileName.substring(1);
+      if (profileName !== 'default') {
+        c++;
+        TEAM_PROFILES.push({
+          n: profileName,
+          initials: profileName.substring(0, 2).toUpperCase(),
+          gender: c % 2 === 0 ? 'female' : 'male',
+          role: 'AI Agent',
+          group: 'engineering'
+        });
+      }
+    }
+  }
+} catch(e) {}
+const MEMBERS = new Set(TEAM_PROFILES.map(p => p.n));
 const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 
 // ---- agent worker: one task at a time per connected member, oldest first ----
@@ -134,8 +159,16 @@ async function api(req, res, url) {
       });
     });
   }
-  if (url.pathname === '/api/agents' && req.method === 'GET')
-    return send(res, 200, {mode: DRY_RUN ? 'dry-run' : 'claude', model: DRY_RUN ? null : MODEL, members: Object.fromEntries(Object.entries(agents).map(([name, a]) => [name, {role: a.role, model: modelOf(a)}]))});
+  if (url.pathname === '/api/team' && req.method === 'GET') {
+    return send(res, 200, TEAM_PROFILES);
+  }
+  if (url.pathname === '/api/agents' && req.method === 'GET') {
+    const mems = {};
+    for (const p of TEAM_PROFILES) {
+      mems[p.n] = { role: p.role, model: 'hermes' };
+    }
+    return send(res, 200, {mode: 'claude', model: 'hermes', members: mems});
+  }
 if (url.pathname === '/api/tasks' && req.method === 'GET') {
     const board = url.searchParams.get('board');
     if (board) {

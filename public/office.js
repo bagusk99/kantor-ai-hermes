@@ -40,21 +40,13 @@
     engineering: {name:'Engineering & Design', x:-5.5, z:6.5, color:0x3f7a58},
     service: {name:'Customer Service', x:5.5, z:6.5, color:0x74598c}
   };
-  const TEAM = [
-    {n:'Koh Arman', initials:'KA', gender:'male', role:'CEO', group:'leadership'},
-    {n:'Koh Wira', initials:'KW', gender:'male', role:'CTO', group:'leadership'},
-    {n:'Kak Rani', initials:'KR', gender:'female', role:'Social Media Specialist', group:'marketing'},
-    {n:'Kak Dewi', initials:'KD', gender:'female', role:'Digital Marketing', group:'marketing'},
-    {n:'Mira', initials:'M', gender:'female', role:'Business Development', group:'marketing'},
-    {n:'Tari', initials:'T', gender:'female', role:'Social Media Intern', group:'marketing'},
-    {n:'Bagas Pratama Putra', initials:'BPP', gender:'male', role:'Frontend Engineer', group:'engineering'},
-    {n:'Rizky Hakim', initials:'RH', gender:'male', role:'Backend Engineer', group:'engineering'},
-    {n:'Yoga', initials:'Y', gender:'male', role:'Product Design', group:'engineering'},
-    {n:'Bang Eko', initials:'BE', gender:'male', role:'Graphic Designer', group:'engineering'},
-    {n:'Gilang', initials:'G', gender:'male', role:'Customer Service Leader', group:'service'},
-    {n:'Kak Sinta', initials:'KS', gender:'female', role:'Customer Service', group:'service'},
-    {n:'Kak Laras', initials:'KL', gender:'female', role:'Customer Service', group:'service'}
-  ];
+  let TEAM = [];
+  try {
+    const req = new XMLHttpRequest();
+    req.open('GET', '/api/team', false);
+    req.send(null);
+    TEAM = JSON.parse(req.responseText);
+  } catch(e) {}
   const softShapes=new Map();
   const floors = {}, materials = new Map(), agents = [];
   let root, activeFloor = 3, selected = null, paused = false, simTime = 0;
