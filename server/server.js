@@ -174,6 +174,15 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     if (board) {
       try {
         const hTasks = await execHermes(['kanban', '--board', board, 'list', '--json']);
+        
+        const summaryPromises = hTasks.filter(t => t.status === 'blocked' || t.status === 'review').map(async t => {
+          try {
+            const details = await execHermes(['kanban', '--board', board, 'show', t.id, '--json']);
+            t.latest_summary = details.latest_summary;
+          } catch(e) {}
+        });
+        await Promise.all(summaryPromises);
+
         const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
         const mapped = hTasks.map(t => {
           const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (t.assignee || '').toLowerCase()) || t.assignee || '';
@@ -183,7 +192,8 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             brief: t.body || '',
             assignee: matchedAssignee,
             status: statusMap[t.status] || 'queued',
-            result: t.result || '',
+            result: (statusMap[t.status] === 'review' || statusMap[t.status] === 'done') ? (t.result || t.latest_summary || '') : '',
+            questions: statusMap[t.status] === 'blocked' ? (t.latest_summary || '') : undefined,
             createdAt: new Date(t.created_at * 1000).toISOString(),
             error: t.last_failure_error || undefined
           };
@@ -275,25 +285,39 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     const board = url.searchParams.get('board');
     if (board) {
       try {
+        if (input.action === 'answer') {
+           const answerText = typeof input.answer === 'string' ? input.answer.trim().slice(0, 3000) : '';
+           if (answerText) {
+             await execHermes(['kanban', '--board', board, 'comment', match[1], '--author', 'user', answerText]);
+           }
+           await execHermes(['kanban', '--board', board, 'unblock', match[1]]).catch(()=>{});
+        } else if (input.action === 'revise') {
+           const feedbackText = typeof input.feedback === 'string' ? input.feedback.trim().slice(0, 5000) : 'Please revise.';
+           await execHermes(['kanban', '--board', board, 'request-changes', match[1], feedbackText]);
+        } else if (input.action === 'approve') {
+           await execHermes(['kanban', '--board', board, 'complete', match[1], '--result', 'Approved', '--force']);
+        }
+
         if (input.assignee !== undefined) {
            await execHermes(['kanban', '--board', board, 'assign', match[1], input.assignee]);
         }
         if (input.status === 'done') {
            await execHermes(['kanban', '--board', board, 'complete', match[1], '--result', input.result || 'done', '--force']);
         } else if (input.status === 'queued') {
-           // No direct command to move back to queue, fallback to unblock or similar? 
-           // We can just ignore queued for Hermes tasks since Hermes manages it.
-           // However, if we need to promote a blocked task, we could use unblock.
            await execHermes(['kanban', '--board', board, 'unblock', match[1]]).catch(()=>{});
         } else if (input.status === 'review') {
            await execHermes(['kanban', '--board', board, 'request-review', match[1]]).catch(()=>{});
         }
         
-        // Fetch updated task to return to UI
         const updatedTaskList = await execHermes(['kanban', '--board', board, 'list', '--json']);
         const hTask = updatedTaskList.find(t => t.id === match[1]);
         if (hTask) {
           const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
+          let summary = '';
+          if (statusMap[hTask.status] === 'blocked' || statusMap[hTask.status] === 'review') {
+            const details = await execHermes(['kanban', '--board', board, 'show', match[1], '--json']).catch(()=>null);
+            summary = details ? details.latest_summary : '';
+          }
           const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (hTask.assignee || '').toLowerCase()) || hTask.assignee || '';
           return send(res, 200, {
             id: hTask.id,
@@ -301,7 +325,8 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             brief: hTask.body || '',
             assignee: matchedAssignee,
             status: statusMap[hTask.status] || 'queued',
-            result: hTask.result || '',
+            result: (statusMap[hTask.status] === 'review' || statusMap[hTask.status] === 'done') ? (hTask.result || summary || '') : '',
+            questions: statusMap[hTask.status] === 'blocked' ? summary : undefined,
             createdAt: new Date(hTask.created_at * 1000).toISOString(),
             error: hTask.last_failure_error || undefined
           });

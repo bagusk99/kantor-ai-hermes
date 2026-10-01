@@ -1122,7 +1122,7 @@
     agent.activity={spot,duration,until:Infinity,...extra};
   }
   function startActivity(agent) {
-    const idle=agents.filter(o=>o!==agent&&o.floor===3&&o.state==='work'&&o.spot===o.desk&&!o.visitor&&!o.activity);
+    const idle=agents.filter(o=>o!==agent&&o.floor===3&&o.state==='work'&&o.spot===o.desk&&!o.visitor&&!o.activity&&!window.officeTasks.activeFor(o.n));
     const open=kind=>hangouts.filter(s=>s.state===kind&&!s.occupant);
     const prefer=list=>{const mates=list.filter(o=>o.group===agent.group);return mates.length&&Math.random()<.6?mates:list;};
     const away=agents.filter(a=>a.activity).length,roll=Math.random();
@@ -1146,6 +1146,7 @@
     if(activity){if(agent.spot===activity.spot&&simTime>=activity.until)setPath(agent,agent.desk);return;}
     if(agent.floor===4&&agent.destination?.floor===4){roofRoutine(agent);return;}
     if(!routineOn||agent.floor!==3||agent.state!=='work'||agent.spot!==agent.desk||agent.visitor||simTime<agent.nextRoutine)return;
+    if(window.officeTasks.activeFor(agent.n))return; // Stay at desk if a task is in progress
     if(agents.filter(a=>a.activity).length>=MAX_AWAY){agent.nextRoutine=simTime+rand(3,8);return;}
     startActivity(agent);
   }

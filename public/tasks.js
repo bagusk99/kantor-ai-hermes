@@ -130,7 +130,7 @@
     const form=node('form'),label=node('label','Your answer'),input=node('textarea'),key=draftKey(task,'answer');
     input.id=`answer-${task.id}`;label.htmlFor=input.id;input.required=true;input.maxLength=3000;input.rows=3;input.value=draftRead(key);
     input.oninput=()=>{input.setCustomValidity('');draftWrite(key,input.value);};
-    const submit=node('button','Send answer');submit.type='submit';submit.className='task-primary';
+    const submit=node('button','Send answer');submit.type='submit';submit.className='task-primary';submit.style.marginTop='12px';
     form.append(label,input,submit);form.onsubmit=e=>{e.preventDefault();if(!input.value.trim()){input.setCustomValidity('Write an answer first.');input.reportValidity();return;}answerTask(task,input.value.trim());};
     article.append(form);
   }
