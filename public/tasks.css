@@ -82,3 +82,25 @@ dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
 }
+
+.task-agent-summary {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.task-worker-log {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  margin-top: 4px;
+}
+

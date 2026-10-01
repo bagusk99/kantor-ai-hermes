@@ -16,6 +16,21 @@
   const displayName = name => team.find(person => person.n === name)?.initials || name;
   const agentFor = name => server?.members[name] ? {...server.members[name], mode: server.mode} : null;
 
+  function humanTime(isoString) {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMin = Math.floor((now - date) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 1440) return `${Math.floor(diffMin / 60)}h ago`;
+    const diffDay = Math.floor(diffMin / 1440);
+    if (diffDay < 7) return `${diffDay}d ago`;
+    const options = { month: 'short', day: 'numeric' };
+    if (date.getFullYear() !== now.getFullYear()) options.year = 'numeric';
+    return date.toLocaleDateString('en-GB', options);
+  }
+
   function feedback(message) { el('taskFeedback').textContent = message; }
   function persist(next) {
     if (!storageHealthy) {
@@ -159,7 +174,24 @@
       article.append(node('p', `The agent could not finish: ${task.error}`, 'task-error'));
       actions.append(action('Try again', () => update(task.id, 'queued')));
     } else if (task.status === 'queued') article.append(node('p', 'Waiting for the AI agent to pick this up.', 'task-agent'));
-    else if (task.status === 'active') article.append(node('p', agent.mode === 'claude' ? 'The AI agent is working on this…' : 'Dry run in progress…', 'task-agent'));
+    else if (task.status === 'active') {
+      const logText = task.workerLog ? task.workerLog.trim() : '';
+      if (logText) {
+        const details = node('details');
+        const summary = node('summary', agent.mode === 'claude' ? 'The AI agent is working on this…' : 'Dry run in progress…');
+        summary.className = 'task-agent task-agent-summary';
+        const logBox = node('div', logText, 'task-worker-log');
+        details.append(summary, logBox);
+        article.append(details);
+      } else {
+        const details = node('details');
+        const summary = node('summary', agent.mode === 'claude' ? 'The AI agent is working on this…' : 'Dry run in progress…');
+        summary.className = 'task-agent task-agent-summary';
+        const logBox = node('div', 'Initializing worker...', 'task-worker-log');
+        details.append(summary, logBox);
+        article.append(details);
+      }
+    }
     else {
       article.append(node('p', task.by === 'dry-run' ? 'Dry run result, not AI output. Review before use.' : task.by ? `Draft by Claude (${task.by}). Review before use.` : 'Result', 'task-agent'));
       if(task.status==='review')reviewControls(task,article);else article.append(node('div', task.result, 'task-result'));
@@ -191,17 +223,20 @@
     });
 
     const visible = tasks.filter(t => (el('taskFilter').value === 'all' || t.status === el('taskFilter').value) &&
-      (el('agentFilter').value === 'all' || t.assignee === el('agentFilter').value));
+      (el('agentFilter').value === 'all' || t.assignee === el('agentFilter').value))
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     
     for (const task of visible) {
       const agent = agentFor(task.assignee);
       const card = node('div', undefined, 'kanban-card');
       card.onclick = (e) => {
-        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.closest('form')) return;
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.closest('form') || e.target.tagName === 'SUMMARY' || e.target.closest('details')) return;
         expandedTaskId = expandedTaskId === task.id ? null : task.id;
         render();
       };
-      card.append(node('h4', task.title), node('div', `${displayName(task.assignee)}${agent ? ` · AI agent` : ''}`, 'task-meta'));
+      const timeStr = task.updatedAt ? humanTime(task.updatedAt) : (task.createdAt ? humanTime(task.createdAt) : '');
+      const metaText = `${displayName(task.assignee)}${agent ? ` · AI agent` : ''}${timeStr ? ` · ${timeStr}` : ''}`;
+      card.append(node('h4', task.title), node('div', metaText, 'task-meta'));
       
       if (expandedTaskId === task.id) {
         const article = node('article', undefined, 'task-item');

@@ -302,6 +302,18 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
 
         hTasks.forEach(t => {
           t.latest_summary = summaries[t.id];
+          if (t.status === 'running') {
+            try {
+              const os = require('node:os');
+              const path = require('node:path');
+              const fs = require('node:fs');
+              const logFile = path.join(process.env.HERMES_HOME || path.join(os.homedir(), '.hermes'), 'kanban', 'boards', board, 'logs', t.id + '.log');
+              if (fs.existsSync(logFile)) {
+                const logContent = fs.readFileSync(logFile, 'utf8');
+                t.live_log = logContent.length > 5000 ? logContent.slice(-5000) : logContent;
+              }
+            } catch (e) {}
+          }
         });
 
         const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
@@ -316,7 +328,8 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             result: (statusMap[t.status] === 'review' || statusMap[t.status] === 'done') ? (t.result || t.latest_summary || '') : '',
             questions: statusMap[t.status] === 'blocked' ? (t.latest_summary || '') : undefined,
             createdAt: new Date(t.created_at * 1000).toISOString(),
-            error: t.last_failure_error || undefined
+            error: t.last_failure_error || undefined,
+            workerLog: statusMap[t.status] === 'active' ? (t.live_log || undefined) : (t.latest_summary || undefined)
           };
         });
         return send(res, 200, mapped);
@@ -428,9 +441,21 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
         if (hTask) {
           const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
           let summary = '';
+          let live_log = '';
           if (statusMap[hTask.status] === 'blocked' || statusMap[hTask.status] === 'review') {
             const details = await execHermes(['kanban', '--board', board, 'show', match[1], '--json']).catch(()=>null);
             summary = details ? details.latest_summary : '';
+          } else if (statusMap[hTask.status] === 'active') {
+            try {
+              const os = require('node:os');
+              const path = require('node:path');
+              const fs = require('node:fs');
+              const logFile = path.join(process.env.HERMES_HOME || path.join(os.homedir(), '.hermes'), 'kanban', 'boards', board, 'logs', hTask.id + '.log');
+              if (fs.existsSync(logFile)) {
+                const logContent = fs.readFileSync(logFile, 'utf8');
+                live_log = logContent.length > 5000 ? logContent.slice(-5000) : logContent;
+              }
+            } catch (e) {}
           }
           const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (hTask.assignee || '').toLowerCase()) || hTask.assignee || '';
           return send(res, 200, {
@@ -442,7 +467,8 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             result: (statusMap[hTask.status] === 'review' || statusMap[hTask.status] === 'done') ? (hTask.result || summary || '') : '',
             questions: statusMap[hTask.status] === 'blocked' ? summary : undefined,
             createdAt: new Date(hTask.created_at * 1000).toISOString(),
-            error: hTask.last_failure_error || undefined
+            error: hTask.last_failure_error || undefined,
+            workerLog: statusMap[hTask.status] === 'active' ? (live_log || undefined) : (summary || undefined)
           });
         }
         return send(res, 200, {id: match[1]});
