@@ -218,6 +218,16 @@ async function api(req, res, url) {
       return send(res, 500, { error: e.message });
     }
   }
+  const switchMatch = url.pathname.match(/^\/api\/boards\/([^/]+)\/switch$/);
+  if (switchMatch && req.method === 'POST') {
+    try {
+      const slug = decodeURIComponent(switchMatch[1]);
+      const data = await apiFetch('POST', `/api/plugins/kanban/boards/${encodeURIComponent(slug)}/switch`);
+      return send(res, 200, data);
+    } catch (e) {
+      return send(res, 500, { error: e.message });
+    }
+  }
   const boardMatch = url.pathname.match(/^\/api\/boards\/([^/]+)$/);
   if (boardMatch && req.method === 'PATCH') {
     try {

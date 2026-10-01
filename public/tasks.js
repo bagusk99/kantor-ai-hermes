@@ -480,6 +480,9 @@
 
       const bs = document.getElementById('boardSelect');
       if (bs) bs.onchange = async () => { 
+        if (bs.value) {
+          await fetch(`/api/boards/${encodeURIComponent(bs.value)}/switch`, { method: 'POST', headers: {'content-type': 'application/json'} }).catch(() => {});
+        }
         tasks = []; render(); 
         const latest = await call('GET', '/api/tasks').catch(()=>[]); apply(latest); render(); 
         if (el('btnBoardOptions')) {
