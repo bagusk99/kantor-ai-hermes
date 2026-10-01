@@ -1142,6 +1142,10 @@
     assign(agent,agent.stretchSpot,rand(3.5,6));
   }
   function live(agent) {
+    if(window.officeTasks.activeFor(agent.n) && agent.destination !== agent.desk) {
+      setPath(agent, agent.desk);
+      return;
+    }
     const activity=agent.activity;
     if(activity){if(agent.spot===activity.spot&&simTime>=activity.until)setPath(agent,agent.desk);return;}
     if(agent.floor===4&&agent.destination?.floor===4){roofRoutine(agent);return;}
