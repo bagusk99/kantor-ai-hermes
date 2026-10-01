@@ -17,7 +17,13 @@
   <header id="header">
     <div id="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><circle cx="8" cy="8" r="3.2"/><circle cx="16.5" cy="8.5" r="2.7"/><path d="M2 19c0-3.6 2.7-6 6-6s6 2.4 6 6v1H2z"/><path d="M15 20v-1c0-2-.6-3.7-1.7-5 .9-.6 2-1 3.2-1 3 0 5.5 2.2 5.5 5.5V20z"/></svg></span><div class="brand-name"><strong>Kantor Kita</strong><span class="brand-meta">13 people · 4 floors</span></div><span class="brand-tagline">A virtual office<br>for real teamwork</span></div>
     <div class="header-card">
-      <div class="team-picker"><label for="boardSelect">Hermes Board</label><select id="boardSelect"><option value="">Local Only (No Hermes)</option></select></div>
+      <div class="team-picker">
+        <label for="boardSelect">Hermes Board</label>
+        <div style="display: flex; gap: 8px;">
+          <select id="boardSelect" style="flex: 1;"><option value="">Local Only (No Hermes)</option></select>
+          <button id="btnCreateBoard" class="btn" title="Create New Board" style="padding: 0; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">+</button>
+        </div>
+      </div>
       <div class="team-picker"><label for="teamSelect">Team member</label><select id="teamSelect"><option value="">Pick initials</option></select></div>
       <div id="teamFaces" aria-label="Team members"></div>
       <button id="bLog" class="btn" aria-controls="log" aria-expanded="true">Log</button>
@@ -72,6 +78,46 @@
         <p id="taskSummary"></p><div id="taskList" class="kanban-board"></div>
       </section>
     </div>
+  </dialog>
+  <dialog id="createBoardDialog" class="profile-modal" style="padding: 20px; border-radius: 12px; border: 1px solid var(--line); max-width: 600px; width: 100%; background: var(--sheet);">
+    <h2 style="margin-top:0">Create New Board</h2>
+    <form id="createBoardForm">
+      <p id="createBoardFeedback" role="status" aria-live="polite" style="color: #a33a24; margin-top: 0; margin-bottom: 12px; font-weight: 500;"></p>
+      
+      <label style="display:block;margin-bottom:12px;font-weight:600">Slug <span style="font-weight:400;color:var(--ink-2);font-size:13px">(required, lowercase and hyphens)</span>
+        <input type="text" id="cbSlug" required pattern="^[a-z0-9-]+$" title="Only lowercase letters, numbers, and hyphens" placeholder="my-awesome-project" style="display:block;width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;margin-top:6px;font:inherit">
+      </label>
+      
+      <label style="display:block;margin-bottom:12px;font-weight:600">Display Name <span style="font-weight:400;color:var(--ink-2);font-size:13px">(optional)</span>
+        <input type="text" id="cbName" placeholder="My Awesome Project" style="display:block;width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;margin-top:6px;font:inherit">
+      </label>
+      
+      <label style="display:block;margin-bottom:12px;font-weight:600">Description <span style="font-weight:400;color:var(--ink-2);font-size:13px">(optional)</span>
+        <textarea id="cbDesc" rows="3" placeholder="What is this board for?" style="display:block;width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;margin-top:6px;font:inherit;resize:vertical"></textarea>
+      </label>
+      
+      <label style="display:block;margin-bottom:12px;font-weight:600">Project Directory <span style="font-weight:400;color:var(--ink-2);font-size:13px">(required, absolute path)</span>
+        <input type="text" id="cbProjectDir" required placeholder="/var/www/my-awesome-project" style="display:block;width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;margin-top:6px;font:inherit">
+      </label>
+      
+      <label style="display:block;margin-bottom:20px;font-weight:600">Icon <span style="font-weight:400;color:var(--ink-2);font-size:13px">(optional)</span>
+        <select id="cbIcon" style="display:block;width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;margin-top:6px;font:inherit">
+          <option value="">(None)</option>
+          <option value="📌">📌 Pin</option>
+          <option value="🚀">🚀 Rocket</option>
+          <option value="💻">💻 Code</option>
+          <option value="🐛">🐛 Bug</option>
+          <option value="💡">💡 Idea</option>
+          <option value="📈">📈 Chart</option>
+          <option value="🛠️">🛠️ Tools</option>
+        </select>
+      </label>
+      
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button type="button" class="btn" id="closeCreateBoard">Cancel</button>
+        <button type="submit" class="btn primary">Create Board</button>
+      </div>
+    </form>
   </dialog>
   <script src="tasks.js"></script>
   <script src="music.js"></script>

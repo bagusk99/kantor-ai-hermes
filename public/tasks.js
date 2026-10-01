@@ -305,7 +305,7 @@
             const option = document.createElement('option');
             option.value = b.slug;
             option.dataset.workdir = b.default_workdir || '';
-            option.textContent = b.name + (b.is_current ? ' (Current)' : '');
+            option.textContent = (b.icon ? b.icon + ' ' : '') + b.name + (b.is_current ? ' (Current)' : '');
             if (b.is_current) option.selected = true;
             select.append(option);
           });
@@ -368,6 +368,43 @@
       }
       el('closeTasks').onclick = () => el('taskDialog').close();
       el('taskFilter').onchange = render; el('agentFilter').onchange = render;
+
+      if (el('btnCreateBoard')) el('btnCreateBoard').onclick = () => { el('createBoardFeedback').textContent = ''; el('createBoardDialog').showModal(); };
+      if (el('closeCreateBoard')) el('closeCreateBoard').onclick = () => el('createBoardDialog').close();
+      if (el('cbSlug')) el('cbSlug').oninput = () => {
+        if (!el('cbName').value || el('cbName').dataset.auto !== 'false') {
+          let str = el('cbSlug').value.replace(/-/g, ' ');
+          el('cbName').value = str.replace(/\b\w/g, c => c.toUpperCase());
+          el('cbName').dataset.auto = 'true';
+        }
+      };
+      if (el('cbName')) el('cbName').oninput = () => { el('cbName').dataset.auto = el('cbName').value ? 'false' : 'true'; };
+      
+      if (el('createBoardForm')) el('createBoardForm').onsubmit = async (event) => {
+        event.preventDefault();
+        const payload = {
+          slug: el('cbSlug').value,
+          name: el('cbName').value || el('cbSlug').value,
+          description: el('cbDesc').value,
+          project_dir: el('cbProjectDir').value,
+          icon: el('cbIcon').value
+        };
+        el('createBoardFeedback').style.color = 'var(--ink)';
+        el('createBoardFeedback').textContent = 'Creating...';
+        try {
+          const res = await call('POST', '/api/boards', payload);
+          if (res && res.error) throw new Error(res.error);
+          el('createBoardDialog').close();
+          el('createBoardForm').reset();
+          el('cbName').dataset.auto = 'true';
+          await connect();
+          if (bs) { bs.value = payload.slug; bs.onchange(); }
+        } catch (e) {
+          el('createBoardFeedback').style.color = '#a33a24';
+          el('createBoardFeedback').textContent = 'Failed: ' + e.message;
+        }
+      };
+
       const bs = document.getElementById('boardSelect');
       if (bs) bs.onchange = async () => { tasks = []; render(); const latest = await call('GET', '/api/tasks').catch(()=>[]); apply(latest); render(); };
       

@@ -209,6 +209,15 @@ async function api(req, res, url) {
       return send(res, 200, []);
     }
   }
+  if (url.pathname === '/api/boards' && req.method === 'POST') {
+    try {
+      const payload = await readJson(req);
+      const data = await apiFetch('POST', '/api/plugins/kanban/boards', payload);
+      return send(res, 200, data);
+    } catch (e) {
+      return send(res, 500, { error: e.message });
+    }
+  }
   if (url.pathname === '/api/team' && req.method === 'GET') {
     return send(res, 200, TEAM_PROFILES);
   }
