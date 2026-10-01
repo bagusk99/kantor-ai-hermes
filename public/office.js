@@ -1403,7 +1403,25 @@
     const ai=window.officeTasks.agentFor(agent.n);
     if(ai){const badge=document.createElement('span');badge.className='ai-badge';badge.textContent=ai.mode==='claude'?`AI agent · ${ai.model.replace(/^claude-/,'').replace(/-\d{8}$/,'').replace(/-(\d+)-(\d+)$/,' $1.$2').replace(/^\w/,c=>c.toUpperCase())}`:'AI agent · dry run';role.append(badge);}
     const list=document.createElement('dl');
-    for(const [title,value,id] of [['Desk group',GROUPS[agent.group].name,''],['Location',FLOOR[agent.floor].name,'iLocation'],['Activity',agentStatus(agent),'iActivity']]){
+    
+    const dtGroup=document.createElement('dt');dtGroup.textContent='Desk group';
+    const ddGroup=document.createElement('dd');
+    const groupSelect=document.createElement('select');groupSelect.className='group-select';
+    groupSelect.style.width='100%';groupSelect.style.padding='4px';groupSelect.style.marginTop='2px';
+    for(const [k,g] of Object.entries(GROUPS)){
+      const opt=document.createElement('option');opt.value=k;opt.textContent=g.name;
+      if(k===agent.group)opt.selected=true;
+      groupSelect.append(opt);
+    }
+    groupSelect.onchange=async()=>{
+      groupSelect.disabled=true;
+      await fetch(`/api/team/${encodeURIComponent(agent.n)}`,{method:'PATCH',body:JSON.stringify({group:groupSelect.value})});
+      location.reload();
+    };
+    ddGroup.append(groupSelect);
+    list.append(dtGroup,ddGroup);
+
+    for(const [title,value,id] of [['Location',FLOOR[agent.floor].name,'iLocation'],['Activity',agentStatus(agent),'iActivity']]){
       const dt=document.createElement('dt');dt.textContent=title;const dd=document.createElement('dd');dd.textContent=value;if(id)dd.id=id;list.append(dt,dd);
     }
     const pray=document.createElement('label');pray.className='check';const box=document.createElement('input');box.type='checkbox';box.id='iPray';box.checked=prayers.has(agent.n);

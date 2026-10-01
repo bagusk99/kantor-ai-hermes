@@ -48,30 +48,37 @@ function save() {
 }
 const now = () => new Date().toISOString();
 
+let teamOverrides = {};
+try { teamOverrides = JSON.parse(fs.readFileSync('data/team-overrides.json', 'utf8')); } catch(e) {}
+
 let TEAM_PROFILES = [];
-try {
-  const out = cp.execSync('hermes profile list', {encoding: 'utf8'});
-  const lines = out.split('\n');
-  let started = false;
-  let c = 0;
-  for (const line of lines) {
-    if (line.includes('───')) { started = true; continue; }
-    if (started && line.trim()) {
-      let profileName = line.trim().split(/\s+/)[0];
-      if (profileName.startsWith('◆')) profileName = profileName.substring(1);
-      if (profileName !== 'default') {
-        c++;
-        TEAM_PROFILES.push({
-          n: profileName,
-          initials: profileName.substring(0, 2).toUpperCase(),
-          gender: c % 2 === 0 ? 'female' : 'male',
-          role: 'AI Agent',
-          group: profileName === 'techlead' ? 'leadership' : 'engineering'
-        });
+function rebuildTeam() {
+  TEAM_PROFILES = [];
+  try {
+    const out = cp.execSync('hermes profile list', {encoding: 'utf8'});
+    const lines = out.split('\n');
+    let started = false;
+    let c = 0;
+    for (const line of lines) {
+      if (line.includes('───')) { started = true; continue; }
+      if (started && line.trim()) {
+        let profileName = line.trim().split(/\s+/)[0];
+        if (profileName.startsWith('◆')) profileName = profileName.substring(1);
+        if (profileName !== 'default') {
+          c++;
+          TEAM_PROFILES.push({
+            n: profileName,
+            initials: profileName.substring(0, 2).toUpperCase(),
+            gender: c % 2 === 0 ? 'female' : 'male',
+            role: 'AI Agent',
+            group: teamOverrides[profileName]?.group || (profileName === 'techlead' ? 'leadership' : 'engineering')
+          });
+        }
       }
     }
-  }
-} catch(e) {}
+  } catch(e) {}
+}
+rebuildTeam();
 const MEMBERS = new Set(TEAM_PROFILES.map(p => p.n));
 const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 
@@ -161,6 +168,19 @@ async function api(req, res, url) {
   }
   if (url.pathname === '/api/team' && req.method === 'GET') {
     return send(res, 200, TEAM_PROFILES);
+  }
+  const teamMatch = url.pathname.match(/^\/api\/team\/(.+)$/);
+  if (teamMatch && req.method === 'PATCH') {
+    const name = decodeURIComponent(teamMatch[1]);
+    const input = await readJson(req);
+    if (input.group) {
+      if (!teamOverrides[name]) teamOverrides[name] = {};
+      teamOverrides[name].group = input.group;
+      fs.mkdirSync('data', {recursive: true});
+      fs.writeFileSync('data/team-overrides.json', JSON.stringify(teamOverrides));
+      rebuildTeam();
+    }
+    return send(res, 200, TEAM_PROFILES.find(p => p.n === name) || {});
   }
   if (url.pathname === '/api/agents' && req.method === 'GET') {
     const mems = {};
