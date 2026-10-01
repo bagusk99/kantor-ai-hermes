@@ -55,34 +55,42 @@ Tugas disimpan dalam localStorage untuk alamat browser ini. Tidak ada sinkronisa
 
 Tugas dengan nama karakter prototipe lama tetap disimpan dan dapat dipindahkan ke anggota tim baru. Tugas aktif yang dipindahkan kembali ke antrean; hasil tugas selesai tetap dipertahankan.
 
-## Server tugas dan agen AI
+## Server tugas dan agen AI terintegrasi dengan Hermes
 
-Dengan server, tugas disimpan di `data/tasks.json` dan anggota yang tersambung ke agen AI mengerjakan tugasnya sendiri. Saat ini **Social Media Specialist** dan **Customer Service**; daftarnya ada di `server/agents.js`. Anggota lain tetap simulasi dengan status yang diubah manual.
+Saat dijalankan menggunakan server Node.js, aplikasi ini tidak lagi menyimpan tugas di localStorage atau file lokal biasa, melainkan terhubung langsung ke **Hermes Kanban** (`kanban.db` dari sistem Hermes Agent).
 
+Anggota tim yang ditugaskan dapat disambungkan ke *profile* AI Hermes yang sesungguhnya. Agen AI akan secara otomatis memproses tugasnya di balik layar, sementara UI kantor kita memberikan visualisasinya.
+
+### Persiapan Integrasi Hermes
+
+1. Pastikan Anda sudah menginstal **Hermes** CLI di sistem Anda.
+2. Buat *board* Kanban dan inisialisasi jika belum ada:
+   ```sh
+   hermes kanban init
+   ```
+3. Buat profile Hermes untuk agen/pekerja Anda (misalnya jika kita mau agen yang khusus Frontend):
+   ```sh
+   hermes profile create frontend_dev
+   ```
+   Lakukan setup (`hermes -p frontend_dev setup`) untuk mengonfigurasi model dan instruksi khusus profile tersebut.
+4. Namai *assignee* tugas Anda di UI dengan nama profile tersebut.
+
+### Menjalankan Server
 ```sh
-cp .env.example .env   # isi ANTHROPIC_API_KEY dari console.anthropic.com → API Keys
 npm start              # atau: node server/server.js  (Node 22+)
 ```
-
 Buka http://127.0.0.1:3000.
 
-- Tugas untuk anggota yang tersambung ke agen AI berjalan sendiri: **Queued → In progress → Needs review**. Baca hasil lalu pilih **Approve & finish**, atau isi **Revision comments** dan klik **Request revision**. Revisi kembali ke antrean; draf sebelumnya tersimpan di **Draft history**. Agen tidak memposting apa pun.
-- Tanpa `ANTHROPIC_API_KEY`, server berjalan dalam **dry run**: hasilnya teks contoh berlabel jelas, bukan output AI. Label nama anggota yang tersambung ke agen AI memiliki titik hijau dan panel detailnya menampilkan mode yang dipakai.
-- Jika Claude gagal (koneksi, key salah, saldo habis), tugas kembali ke antrean dengan pesan error dan tombol **Try again**.
-- Pada kunjungan pertama ke server yang masih kosong, tugas yang tersimpan di browser dipindahkan ke server.
-- Server belum memiliki login, sehingga hanya mendengarkan di 127.0.0.1 (laptop ini). Jangan dibuka ke jaringan sebelum ada autentikasi.
-- `.env` dan `data/` tidak masuk git.
-- Tanpa server (misalnya `python3 -m http.server` atau Live Server), aplikasi tetap berjalan seperti sebelumnya dengan localStorage.
+- **Pemrosesan AI:** Untuk membiarkan agen AI mulai mengerjakan tugas yang masuk antrean (Queued), Anda perlu menjalankan dispatcher/gateway Hermes. Misalnya, buka terminal baru dan jalankan: `hermes gateway start`. Hermes akan mengambil tugas yang ditujukan ke profilenya dan mengerjakannya.
+- **Siklus Tugas:** AI akan memindahkan tugas dari **Queued → In progress → Review / Needs decision / Done**. 
+  - Jika agen butuh keputusan manusia (Needs decision / Blocked), Anda bisa membalasnya di UI lewat form **Your answer**, lalu tugas kembali masuk antrean. Atau Anda bisa menggunakan tombol **Mark done** untuk mengakhiri tugas saat itu juga tanpa membalas.
+- Server belum memiliki login, sehingga hanya mendengarkan di 127.0.0.1 (laptop ini). Jangan dibuka ke jaringan publik sebelum ada autentikasi.
 
 Tugas terlihat langsung di kantor:
 
 - **Balon ucapan**: karakter berkata "On it!" saat tugasnya dimulai dan "Done!" saat selesai. Agen AI menampilkan "Drafting…" selama bekerja.
 - **Task board** di lantai 3 (dulu idea board, menghadap depan) menampilkan hingga lima tugas terbuka dengan inisial dan statusnya.
 - **Ringkasan** di atas Office log: jumlah orang yang sedang mengerjakan tugas, yang bebas, dan tugas selesai hari ini.
-
-Ketiganya juga berjalan tanpa server (tugas dari localStorage).
-
-Model bawaan adalah `claude-sonnet-5-5`; ganti dengan `ANTHROPIC_MODEL` di `.env`. `tests/server.cjs` menguji alur dry run dari awal sampai akhir, tugas manual, penjaga API, persistensi, dan jalur error agen; tes ini menyalakan servernya sendiri.
 
 ## Struktur
 
@@ -92,8 +100,7 @@ Model bawaan adalah `claude-sonnet-5-5`; ganti dengan `ANTHROPIC_MODEL` di `.env
 - `public/tasks.js`: tugas, validasi, penyimpanan, filter, dan ekspor.
 - `public/tasks.css`: panel tugas responsif, fokus keyboard, dan gaya formulir.
 - `public/music.js`: komposisi instrumental, kontrol putar/mati, dan volume.
-- `server/server.js`: server lokal (file statis + API tugas) dan pekerja agen AI.
-- `server/agents.js`: anggota yang tersambung ke agen AI beserta instruksinya.
+- `server/server.js`: server lokal (file statis + API proxy ke Hermes Kanban).
 
 ## Pemeriksaan browser
 
