@@ -136,7 +136,10 @@
   }
   function agentActions(task, article, actions) {
     const agent = agentFor(task.assignee);
-    if (task.status === 'blocked') answerControls(task, article);
+    if (task.status === 'blocked') {
+      answerControls(task, article);
+      actions.append(action('Mark done', () => update(task.id, 'done', 'Marked done by user (bypassed questions).')));
+    }
     else if (task.status === 'queued' && task.error) {
       article.append(node('p', `The agent could not finish: ${task.error}`, 'task-error'));
       actions.append(action('Try again', () => update(task.id, 'queued')));
