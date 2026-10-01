@@ -1353,6 +1353,76 @@
     }
     section.append(label,scope,people,actions);return section;
   }
+
+  async function openProfileEditor(name) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'profile-modal';
+    dialog.style.padding = '20px';
+    dialog.style.borderRadius = '12px';
+    dialog.style.border = '1px solid var(--line)';
+    dialog.style.maxWidth = '600px';
+    dialog.style.width = '100%';
+    dialog.style.background = 'var(--sheet)';
+    
+    dialog.innerHTML = `
+      <h2 style="margin-top:0">${name ? 'Edit Profile: ' + name : 'Create New Profile'}</h2>
+      <form method="dialog" id="profForm">
+        <label style="display:block;margin-bottom:8px;font-weight:600">Profile Name (lowercase, no spaces)
+           <input type="text" name="profName" required style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px" value="${name || ''}">
+        </label>
+        <label style="display:block;margin-bottom:8px;font-weight:600">Description
+          <textarea name="profDesc" rows="3" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px;font:inherit"></textarea>
+        </label>
+        <label style="display:block;margin-bottom:16px;font-weight:600">SOUL.md
+          <textarea name="profSoul" rows="10" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:4px;font:inherit"></textarea>
+        </label>
+        <div style="display:flex;gap:12px;justify-content:flex-end">
+          <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </div>
+      </form>
+    `;
+    document.body.append(dialog);
+    dialog.showModal();
+
+    if (name) {
+      const res = await fetch(`/api/profiles/${encodeURIComponent(name)}`);
+      if (res.ok) {
+        const data = await res.json();
+        dialog.querySelector('[name=profDesc]').value = data.description || '';
+        dialog.querySelector('[name=profSoul]').value = data.soul || '';
+      }
+    }
+
+    dialog.querySelector('form').onsubmit = async (e) => {
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+      const newName = e.target.querySelector('[name=profName]').value;
+      const desc = e.target.querySelector('[name=profDesc]').value;
+      const soul = e.target.querySelector('[name=profSoul]').value;
+      
+      try {
+        if (name) {
+          await fetch(`/api/profiles/${encodeURIComponent(name)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ name: newName, description: desc, soul })
+          });
+        } else {
+          await fetch('/api/profiles', {
+            method: 'POST',
+            body: JSON.stringify({ name: newName, description: desc, soul })
+          });
+        }
+        location.reload();
+      } catch (err) {
+        alert('Failed to save profile: ' + err.message);
+        btn.textContent = 'Save';
+        btn.disabled = false;
+      }
+    };
+    dialog.onclose = () => dialog.remove();
+  }
   function syncTaskDisplay(agent){
     const task=window.officeTasks.activeFor(agent.n);
     agent.label.classList.toggle('has-task',!!task);
@@ -1433,7 +1503,9 @@
     const taskHeading=document.createElement('h3');taskHeading.textContent='Active task';
     const taskTitle=document.createElement('p');taskTitle.id='iActiveTask';
     const taskBrief=document.createElement('p');taskBrief.id='iTaskBrief';
-    taskSection.append(taskHeading,taskTitle,taskBrief,tasks);
+    const editProf=document.createElement('button');editProf.className='btn';editProf.textContent='Edit Hermes profile';editProf.style.marginTop='6px';editProf.style.width='100%';
+    editProf.onclick=()=>openProfileEditor(agent.n);
+    taskSection.append(taskHeading,taskTitle,taskBrief,tasks,editProf);
     info.append(close,heading,role,taskSection,memberCommands(agent),list,pray,view);
     syncTaskDisplay(agent);
   }
@@ -1443,7 +1515,11 @@
     const face=document.createElement('button');face.className='face';face.textContent=agent.initials;face.style.setProperty('--dot',hex(GROUPS[agent.group].color));
     face.setAttribute('aria-label',`${agent.n}, ${agent.role}`);face.onclick=()=>{$('teamSelect').value=agent.n;selectAgent(agent);};$('teamFaces').append(face);
   }
-  {const more=document.createElement('span');more.className='face more';more.textContent=`+${agents.length-4}`;more.setAttribute('aria-hidden','true');$('teamFaces').append(more);}
+  {const more=document.createElement('span');more.className='face more';more.textContent=`+${Math.max(0,agents.length-4)}`;more.setAttribute('aria-hidden','true');$('teamFaces').append(more);}
+  const createBtn=document.createElement('button');createBtn.className='btn';createBtn.textContent='+ New profile';createBtn.style.marginLeft='8px';
+  createBtn.onclick=()=>openProfileEditor(null);
+  $('teamFaces').append(createBtn);
+
   $('teamSelect').onchange=()=>{const a=agents.find(a=>a.n===$('teamSelect').value);selectAgent(a||null);if(a&&activeFloor!==0){a.g.getWorldPosition(cam.target);cam.radius=Math.max(32,28/camera.aspect);}};
 
   const cam={target:new THREE.Vector3(1,0,0),radius:62,theta:-.22,phi:.78,spin:0};

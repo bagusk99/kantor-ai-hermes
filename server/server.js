@@ -182,6 +182,79 @@ async function api(req, res, url) {
     }
     return send(res, 200, TEAM_PROFILES.find(p => p.n === name) || {});
   }
+
+  // Profile management
+  const profileMatch = url.pathname.match(/^\/api\/profiles\/(.+)$/);
+  if (profileMatch && req.method === 'GET') {
+    const name = decodeURIComponent(profileMatch[1]);
+    try {
+      const desc = cp.execSync(`hermes profile describe "${name}"`, {encoding: 'utf8'}).trim();
+      const show = cp.execSync(`hermes profile show "${name}"`, {encoding: 'utf8'});
+      const pathMatch = show.match(/Path:\s+(.+)/);
+      let soul = '';
+      if (pathMatch) {
+        const soulPath = path.join(pathMatch[1], 'SOUL.md');
+        if (fs.existsSync(soulPath)) soul = fs.readFileSync(soulPath, 'utf8');
+      }
+      return send(res, 200, { description: desc, soul });
+    } catch(e) {
+      return send(res, 404, {error: e.message});
+    }
+  }
+
+  if (profileMatch && req.method === 'PATCH') {
+    let name = decodeURIComponent(profileMatch[1]);
+    const input = await readJson(req);
+    try {
+      if (input.name && input.name !== name) {
+        cp.execSync(`hermes profile rename "${name}" "${input.name.replace(/"/g, '')}"`, {stdio: 'pipe'});
+        
+        // Update local overrides if exists
+        if (teamOverrides[name]) {
+          teamOverrides[input.name] = teamOverrides[name];
+          delete teamOverrides[name];
+          fs.writeFileSync('data/team-overrides.json', JSON.stringify(teamOverrides));
+        }
+        
+        name = input.name; // Use new name for subsequent commands
+      }
+      if (input.description !== undefined) {
+        cp.execSync(`hermes profile describe "${name}" --text "${input.description.replace(/"/g, '\\"')}"`);
+      }
+      if (input.soul !== undefined) {
+        const show = cp.execSync(`hermes profile show "${name}"`, {encoding: 'utf8'});
+        const pathMatch = show.match(/Path:\s+(.+)/);
+        if (pathMatch) {
+          fs.writeFileSync(path.join(pathMatch[1], 'SOUL.md'), input.soul);
+        }
+      }
+      rebuildTeam();
+      return send(res, 200, { success: true });
+    } catch(e) {
+      return send(res, 500, {error: e.message});
+    }
+  }
+
+  if (url.pathname === '/api/profiles' && req.method === 'POST') {
+    const input = await readJson(req);
+    try {
+      let cmd = `hermes profile create "${input.name.replace(/"/g, '')}"`;
+      if (input.description) cmd += ` --description "${input.description.replace(/"/g, '\\"')}"`;
+      cp.execSync(cmd, {stdio: 'pipe'});
+      if (input.soul) {
+        const show = cp.execSync(`hermes profile show "${input.name}"`, {encoding: 'utf8'});
+        const pathMatch = show.match(/Path:\s+(.+)/);
+        if (pathMatch) {
+          fs.writeFileSync(path.join(pathMatch[1], 'SOUL.md'), input.soul);
+        }
+      }
+      rebuildTeam();
+      return send(res, 200, { success: true });
+    } catch(e) {
+      return send(res, 500, {error: String(e.stderr || e.message)});
+    }
+  }
+
   if (url.pathname === '/api/agents' && req.method === 'GET') {
     const mems = {};
     for (const p of TEAM_PROFILES) {
