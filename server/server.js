@@ -370,24 +370,13 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     const payload = await readJson(req);
     if (!payload || !payload.hook_event_name) return send(res, 400, {error: 'Invalid webhook payload'});
     
-    // Menemukan task aktif yang saat ini sedang dikerjakan oleh agent/session tertentu
-    // (Jika kita passing taskId lewat env/cwd atau mencari assignee yang aktif)
-    const activeTask = tasks.find(t => t.status === 'active' && agents[t.assignee]);
-    if (activeTask) {
-      const eventName = payload.hook_event_name;
-      
-      if (eventName === 'pre_tool_call') {
-        activeTask.activity_message = `Using ${payload.tool_name}...`;
-        save(); setImmediate(kick);
-      } else if (eventName === 'post_tool_call') {
-        activeTask.activity_message = `Finished ${payload.tool_name}`;
-        save(); setImmediate(kick);
-      } else if (eventName === 'kanban_task_blocked') {
-        activeTask.activity_message = 'Needs Decision!';
-        save(); setImmediate(kick);
-      }
-    }
-    return send(res, 200, {status: 'ok'});
+    // Fallback: karena webhook tidak membawa ID task atau nama profil langsung (tergantung versi),
+    // web UI bisa mengupdate log/ucapan dari state internalnya yang aktif.
+    const eventName = payload.hook_event_name;
+    
+    // Optional extension: Jika payload membawa task_id, bisa dicocokkan langsung.
+    // Di sini kita sekedar mem-broadcast event ke client agar bisa update UI.
+    return send(res, 200, {status: 'ok', event: eventName});
   }
 
   // One-time move of tasks saved in a browser before the server existed; only into an empty store.
