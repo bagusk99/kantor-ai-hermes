@@ -332,9 +332,10 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     const board = url.searchParams.get('board');
     if (board) {
       try {
-        const args = ['kanban', '--board', board, 'create', '--json'];
+        const args = ['kanban', '--board', board, 'create', '--json', '--triage'];
         if (input.assignee) args.push('--assignee', input.assignee);
         if (input.brief) args.push('--body', input.brief);
+        if (input.workspace) args.push('--workspace', input.workspace);
         args.push(input.title);
         const newTask = await execHermes(args);
         
@@ -406,6 +407,9 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
            await execHermes(['kanban', '--board', board, 'request-changes', match[1], feedbackText]);
         } else if (input.action === 'approve') {
            await execHermes(['kanban', '--board', board, 'complete', match[1], '--result', 'Approved', '--force']);
+        } else if (input.action === 'archive') {
+           await execHermes(['kanban', '--board', board, 'archive', match[1]]);
+           return send(res, 200, {id: match[1], archived: true});
         }
 
         if (input.assignee !== undefined) {
@@ -457,6 +461,11 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
       save();send(res,200,task);setImmediate(kick);return;
     }
     if(input.action!==undefined){
+      if(input.action === 'archive') {
+        const idx = tasks.findIndex(t => t.id === task.id);
+        if(idx !== -1) { tasks.splice(idx, 1); save(); }
+        return send(res, 200, {id: match[1], archived: true});
+      }
       if(!['approve','revise'].includes(input.action))return send(res,400,{error:'Unknown action.'});
       if(task.status!=='review'||input.version!==(task.version||0))return send(res,409,{error:'This draft changed. Refresh and review the latest version.'});
       if(input.action==='revise'&&!text(input.feedback,5000))return send(res,400,{error:'Describe the changes needed.'});

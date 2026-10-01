@@ -61,7 +61,8 @@
     <p id="taskFeedback" role="status" aria-live="polite"></p>
     <div class="task-layout">
       <form id="taskForm"><h2>Create a task</h2><label for="taskTitle">Task</label><input id="taskTitle" required maxlength="160" placeholder="Example: Draft the content calendar">
-        <label for="taskAssignee">Assignee</label><select id="taskAssignee" required></select>
+        <label for="taskWorkspace">Workspace</label><select id="taskWorkspace"><option value="scratch">temporary</option><option value="worktree">git worktree</option><option value="dir:.">directory - preserved</option></select>
+        <label for="taskAssignee">Assignee</label><select id="taskAssignee"><option value="">blank = dispatcher picks (otomatis)</option></select>
         <label for="taskBrief">Instructions <span>(optional)</span></label><textarea id="taskBrief" rows="4" maxlength="5000" placeholder="Describe what is needed and the expected result"></textarea>
         <button class="task-primary" type="submit">Add task</button><p class="task-note" id="saveNote">Saved in this browser. Export tasks to keep a copy.</p><button type="button" id="exportTasks">Export tasks</button>
       </form>

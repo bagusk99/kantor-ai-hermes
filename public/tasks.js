@@ -70,6 +70,21 @@
     button.type = 'button'; button.onclick = handler;
     return button;
   }
+  async function archiveTask(task) {
+    if(!confirm('Archive this task?'))return;
+    try {
+      if (server) {
+        await call('PATCH', `/api/tasks/${task.id}`, {action: 'archive'});
+      }
+      const next = tasks.filter(t => t.id !== task.id);
+      if (!server && !persist(next)) return;
+      if (server) tasks = next;
+      expandedTaskId = null;
+      render();
+      feedback('Task archived.');
+    } catch (error) { feedback(error.message); }
+  }
+
   async function update(id, status, result = '') {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
@@ -149,6 +164,7 @@
       article.append(node('p', task.by === 'dry-run' ? 'Dry run result, not AI output. Review before use.' : task.by ? `Draft by Claude (${task.by}). Review before use.` : 'Result', 'task-agent'));
       if(task.status==='review')reviewControls(task,article);else article.append(node('div', task.result, 'task-result'));
     }
+    actions.append(action('Archive', () => archiveTask(task)));
     article.append(actions);
   }
   const announce = () => document.dispatchEvent(new CustomEvent('officetasks:change'));
@@ -204,7 +220,7 @@
         }
         actions.append(action('Show character', () => { el('taskDialog').close(); locate(task.assignee); }));
         if (agent) { agentActions(task, article, actions); card.append(article); if(cols[task.status]) cols[task.status].append(card); continue; }
-        if(task.status==='review'){reviewControls(task,article);article.append(actions);card.append(article); if(cols[task.status]) cols[task.status].append(card); continue;}
+        if(task.status==='review'){reviewControls(task,article); actions.append(action('Archive', () => archiveTask(task))); article.append(actions);card.append(article); if(cols[task.status]) cols[task.status].append(card); continue;}
         if (task.status === 'queued') actions.append(action('Start task', () => update(task.id, 'active')));
         if (task.status === 'active') {
           actions.append(action('Back to queue', () => update(task.id, 'queued')));
@@ -222,9 +238,11 @@
             update(task.id, 'done', input.value.trim());
           };
           input.oninput = () => {input.setCustomValidity('');draftWrite(key,input.value);};
+          actions.append(action('Archive', () => archiveTask(task)));
           article.append(actions, form);
         } else {
           if (task.status === 'done') article.append(node('div', task.result, 'task-result'));
+          actions.append(action('Archive', () => archiveTask(task)));
           article.append(actions);
         }
         card.append(article);
@@ -320,7 +338,20 @@
         event.preventDefault();
         const title = el('taskTitle').value.trim();
         if (!title) { el('taskTitle').setCustomValidity('Enter a task name.'); el('taskTitle').reportValidity(); return; }
-        const draft = {title, assignee: el('taskAssignee').value, brief: el('taskBrief').value.trim(), status: 'queued', result: ''};
+        
+        const assignee = el('taskAssignee').value;
+        const workspace = el('taskWorkspace').value;
+        const board = document.getElementById('boardSelect')?.value;
+        
+        if (!board && !assignee) {
+          el('taskAssignee').setCustomValidity('Local tasks require an assignee.');
+          el('taskAssignee').reportValidity();
+          return;
+        } else {
+          el('taskAssignee').setCustomValidity('');
+        }
+        
+        const draft = {title, assignee, workspace, brief: el('taskBrief').value.trim(), status: 'queued', result: ''};
         let task;
         if (server) {
           try { task = await call('POST', '/api/tasks', draft); tasks = [task, ...tasks]; if (task.status !== 'queued') changed(task.assignee, task.status, task.title); }
@@ -331,9 +362,13 @@
         }
         el('taskTitle').value = ''; el('taskBrief').value = '';
         el('agentFilter').value = 'all'; el('taskFilter').value = 'all';
-        render(); feedback(`Task added for ${displayName(task.assignee)}${agentFor(task.assignee) ? '. The AI agent will pick it up.' : '.'}`); el('taskTitle').focus();
+        render(); 
+        const msgName = task.assignee ? displayName(task.assignee) : 'dispatcher';
+        feedback(`Task added for ${msgName}${agentFor(task.assignee) ? '. The AI agent will pick it up.' : '.'}`); 
+        el('taskTitle').focus();
       };
       el('taskTitle').oninput = () => el('taskTitle').setCustomValidity('');
+      el('taskAssignee').oninput = () => el('taskAssignee').setCustomValidity('');
       el('exportTasks').onclick = () => {
         const url = URL.createObjectURL(new Blob([JSON.stringify(tasks, null, 2)], {type: 'application/json'}));
         const link = node('a'); link.href = url; link.download = 'kantor-ai-tasks.json'; link.click();
