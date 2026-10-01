@@ -113,7 +113,7 @@ async function rebuildTeam() {
         c++;
         TEAM_PROFILES.push({
           n: p.name,
-          initials: p.name.substring(0, 2).toUpperCase(),
+          initials: p.name,
           gender: c % 2 === 0 ? 'female' : 'male',
           role: 'AI Agent',
           group: teamOverrides[p.name]?.group || (p.name === 'techlead' ? 'leadership' : 'engineering')
