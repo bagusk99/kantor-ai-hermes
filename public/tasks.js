@@ -452,7 +452,7 @@
           slug: el('cbSlug').value,
           name: el('cbName').value || el('cbSlug').value,
           description: el('cbDesc').value,
-          project_dir: el('cbProjectDir').value,
+          default_workdir: el('cbProjectDir').value,
           icon: el('cbIcon').value
         };
         el('createBoardFeedback').style.color = 'var(--ink)';
