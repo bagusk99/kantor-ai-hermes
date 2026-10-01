@@ -1416,7 +1416,12 @@
         }
         location.reload();
       } catch (err) {
-        alert('Failed to save profile: ' + err.message);
+        const errDiag = document.createElement('dialog');
+        errDiag.style.padding = '20px'; errDiag.style.borderRadius = '12px'; errDiag.style.border = '1px solid var(--line)'; errDiag.style.background = 'var(--sheet)'; errDiag.style.color = '#d32f2f';
+        errDiag.innerHTML = `<h4 style="margin:0 0 10px 0">Error</h4><p style="margin:0 0 15px 0">${err.message}</p><div style="text-align:right"><button class="btn" onclick="this.closest('dialog').close()">OK</button></div>`;
+        document.body.append(errDiag);
+        errDiag.showModal();
+        errDiag.onclose = () => errDiag.remove();
         btn.textContent = 'Save';
         btn.disabled = false;
       }
@@ -1505,7 +1510,29 @@
     const taskBrief=document.createElement('p');taskBrief.id='iTaskBrief';
     const editProf=document.createElement('button');editProf.className='btn';editProf.textContent='Edit Hermes profile';editProf.style.marginTop='6px';editProf.style.width='100%';
     editProf.onclick=()=>openProfileEditor(agent.n);
-    taskSection.append(taskHeading,taskTitle,taskBrief,tasks,editProf);
+    const deleteProf=document.createElement('button');deleteProf.className='btn';deleteProf.textContent='Delete profile';deleteProf.style.marginTop='6px';deleteProf.style.width='100%';deleteProf.style.color='#d32f2f';deleteProf.style.borderColor='#f5c2c7';deleteProf.style.background='#fdf3f4';
+    deleteProf.onclick=()=>{
+      const d = document.createElement('dialog');
+      d.style.padding = '24px'; d.style.borderRadius = '12px'; d.style.border = '1px solid var(--line)';
+      d.style.background = 'var(--sheet)'; d.style.maxWidth = '400px';
+      d.innerHTML = `
+        <h3 style="margin:0 0 12px 0">Delete Profile</h3>
+        <p style="margin:0 0 20px 0;line-height:1.4">Are you sure you want to permanently delete the profile <strong>${agent.n}</strong>?</p>
+        <div style="display:flex;gap:12px;justify-content:flex-end">
+          <button type="button" class="btn" id="btnDelCancel">Cancel</button>
+          <button type="button" class="btn primary" id="btnDelConfirm" style="background:#d32f2f;border-color:#d32f2f">Delete</button>
+        </div>
+      `;
+      document.body.append(d);
+      d.showModal();
+      d.querySelector('#btnDelCancel').onclick = () => { d.close(); d.remove(); };
+      d.querySelector('#btnDelConfirm').onclick = async () => {
+        d.querySelector('#btnDelConfirm').textContent = 'Deleting...';
+        await fetch(`/api/profiles/${encodeURIComponent(agent.n)}`, {method:'DELETE'});
+        location.reload();
+      };
+    };
+    taskSection.append(taskHeading,taskTitle,taskBrief,tasks,editProf,deleteProf);
     info.append(close,heading,role,taskSection,memberCommands(agent),list,pray,view);
     syncTaskDisplay(agent);
   }

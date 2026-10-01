@@ -202,6 +202,21 @@ async function api(req, res, url) {
     }
   }
 
+  if (profileMatch && req.method === 'DELETE') {
+    const name = decodeURIComponent(profileMatch[1]);
+    try {
+      cp.execSync(`hermes profile delete -y "${name.replace(/"/g, '')}"`, {stdio: 'pipe'});
+      if (teamOverrides[name]) {
+        delete teamOverrides[name];
+        fs.writeFileSync('data/team-overrides.json', JSON.stringify(teamOverrides));
+      }
+      rebuildTeam();
+      return send(res, 200, { success: true });
+    } catch(e) {
+      return send(res, 500, {error: String(e.stderr || e.message)});
+    }
+  }
+
   if (profileMatch && req.method === 'PATCH') {
     let name = decodeURIComponent(profileMatch[1]);
     const input = await readJson(req);
