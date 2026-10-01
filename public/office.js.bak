@@ -1616,16 +1616,14 @@
   function say(agent,text,seconds=3.5){agent.sayText=text;agent.sayUntil=performance.now()+seconds*1000;}
   function sayingNow(agent){
     if(agent.sayUntil>performance.now())return agent.sayText;
-    const task = window.officeTasks.activeFor(agent.n);
-    if (window.officeTasks.agentFor(agent.n) && task) return task.activity_message || 'Drafting…';
-    return '';
+    return window.officeTasks.agentFor(agent.n)&&window.officeTasks.activeFor(agent.n)?'Drafting…':'';
   }
   function syncBubble(agent){
     const text=sayingNow(agent);if(agent.sayShown===text)return;agent.sayShown=text;
     let bubble=agent.label.querySelector('.say');
     if(!text){bubble?.remove();return;}
     if(!bubble){bubble=document.createElement('span');bubble.className='say';bubble.setAttribute('aria-hidden','true');agent.label.append(bubble);}
-    bubble.textContent=text;bubble.classList.toggle('drafting', !!(window.officeTasks.agentFor(agent.n) && window.officeTasks.activeFor(agent.n)));
+    bubble.textContent=text;bubble.classList.toggle('drafting',text==='Drafting…');
   }
   // Task board and log summary follow the task list, whether it lives in the browser or on the server.
   function drawBoard(){

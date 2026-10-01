@@ -111,19 +111,6 @@ function newTask(input) {
   return {id: crypto.randomUUID(), title, assignee, brief: text(input.brief, 5000), status: ['done','review'].includes(status) && !result ? 'queued' : status, result, createdAt: now()};
 }
 async function api(req, res, url) {
-    if (url.pathname === '/api/boards' && req.method === 'GET') {
-    return new Promise(resolve => {
-      require('node:child_process').exec('hermes kanban boards list --json', (err, stdout) => {
-        if (err) return resolve(send(res, 200, []));
-        try {
-          const boards = JSON.parse(stdout);
-          resolve(send(res, 200, boards));
-        } catch(e) {
-          resolve(send(res, 200, []));
-        }
-      });
-    });
-  }
   if (url.pathname === '/api/agents' && req.method === 'GET')
     return send(res, 200, {mode: DRY_RUN ? 'dry-run' : 'claude', model: DRY_RUN ? null : MODEL, members: Object.fromEntries(Object.entries(agents).map(([name, a]) => [name, {role: a.role, model: modelOf(a)}]))});
   if (url.pathname === '/api/tasks' && req.method === 'GET') return send(res, 200, tasks);
@@ -136,30 +123,6 @@ async function api(req, res, url) {
     if(task.status==='active'&&tasks.some(t=>t.assignee===task.assignee&&t.status==='active'))return send(res,409,{error:'This member already has an active task.'});
     tasks.unshift(task); save(); send(res, 201, task); setImmediate(kick); return;
   }
-  if (url.pathname === '/api/webhook/hermes' && req.method === 'POST') {
-    const payload = await readJson(req);
-    if (!payload || !payload.hook_event_name) return send(res, 400, {error: 'Invalid webhook payload'});
-    
-    // Menemukan task aktif yang saat ini sedang dikerjakan oleh agent/session tertentu
-    // (Jika kita passing taskId lewat env/cwd atau mencari assignee yang aktif)
-    const activeTask = tasks.find(t => t.status === 'active' && agents[t.assignee]);
-    if (activeTask) {
-      const eventName = payload.hook_event_name;
-      
-      if (eventName === 'pre_tool_call') {
-        activeTask.activity_message = `Using ${payload.tool_name}...`;
-        save(); setImmediate(kick);
-      } else if (eventName === 'post_tool_call') {
-        activeTask.activity_message = `Finished ${payload.tool_name}`;
-        save(); setImmediate(kick);
-      } else if (eventName === 'kanban_task_blocked') {
-        activeTask.activity_message = 'Needs Decision!';
-        save(); setImmediate(kick);
-      }
-    }
-    return send(res, 200, {status: 'ok'});
-  }
-
   // One-time move of tasks saved in a browser before the server existed; only into an empty store.
   if (url.pathname === '/api/tasks/import' && req.method === 'POST') {
     if (tasks.length) return send(res, 409, {error: 'The server already has tasks.'});

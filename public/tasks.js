@@ -207,6 +207,22 @@
       const response = await fetch('/api/agents', {cache: 'no-store'});
       if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return;
       info = await response.json();
+      
+      const boardsRes = await fetch('/api/boards', {cache: 'no-store'}).catch(() => null);
+      if (boardsRes && boardsRes.ok) {
+        const boards = await boardsRes.json();
+        const select = document.getElementById('boardSelect');
+        if (select) {
+          select.innerHTML = '<option value="">Local Only (No Hermes)</option>';
+          boards.forEach(b => {
+            const option = document.createElement('option');
+            option.value = b.slug;
+            option.textContent = b.name + (b.is_current ? ' (Current)' : '');
+            if (b.is_current) option.selected = true;
+            select.append(option);
+          });
+        }
+      }
     } catch { return; }
     let list = await call('GET', '/api/tasks').catch(() => null);
     if (!list) return;
