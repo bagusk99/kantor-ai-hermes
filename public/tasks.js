@@ -13,6 +13,7 @@
 
   // With the server running, tasks live there and some members are AI agents; without it, tasks stay in this browser.
   let server = null;
+  let loadedBoards = [];
   const displayName = name => team.find(person => person.n === name)?.initials || name;
   const agentFor = name => server?.members[name] ? {...server.members[name], mode: server.mode} : null;
 
@@ -298,6 +299,7 @@
       const boardsRes = await fetch('/api/boards', {cache: 'no-store'}).catch(() => null);
       if (boardsRes && boardsRes.ok) {
         const boards = await boardsRes.json();
+        loadedBoards = boards;
         const select = document.getElementById('boardSelect');
         if (select) {
           select.innerHTML = '<option value="">Local Only (No Hermes)</option>';
@@ -309,6 +311,7 @@
             if (b.is_current) option.selected = true;
             select.append(option);
           });
+          if (el('btnBoardOptions')) el('btnBoardOptions').style.display = select.value ? 'flex' : 'none';
         }
       }
     } catch { return; }
@@ -369,7 +372,69 @@
       el('closeTasks').onclick = () => el('taskDialog').close();
       el('taskFilter').onchange = render; el('agentFilter').onchange = render;
 
-      if (el('btnCreateBoard')) el('btnCreateBoard').onclick = () => { el('createBoardFeedback').textContent = ''; el('createBoardDialog').showModal(); };
+      if (el('btnBoardOptions')) {
+        el('btnBoardOptions').onclick = (e) => {
+          e.stopPropagation();
+          const menu = el('boardOptionsMenu');
+          if (menu) menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+        };
+        document.addEventListener('click', () => {
+          if (el('boardOptionsMenu')) el('boardOptionsMenu').style.display = 'none';
+        });
+      }
+
+      if (el('btnCreateBoard')) el('btnCreateBoard').onclick = () => { 
+        el('createBoardHeading').textContent = 'Create New Board';
+        document.querySelector('#createBoardForm button[type="submit"]').textContent = 'Create Board';
+        el('createBoardForm').dataset.mode = 'create';
+        el('createBoardForm').reset();
+        el('cbSlug').readOnly = false;
+        el('cbSlug').style.opacity = '1';
+        el('cbName').dataset.auto = 'true';
+        el('createBoardFeedback').textContent = ''; 
+        el('createBoardDialog').showModal(); 
+      };
+
+      if (el('btnEditBoard')) el('btnEditBoard').onclick = () => {
+        if (!bs || !bs.value) return;
+        const board = loadedBoards.find(b => b.slug === bs.value);
+        if (!board) return;
+        
+        el('createBoardHeading').textContent = 'Edit Board';
+        document.querySelector('#createBoardForm button[type="submit"]').textContent = 'Save Changes';
+        el('createBoardForm').dataset.mode = 'edit';
+        
+        el('cbSlug').value = board.slug;
+        el('cbSlug').readOnly = true;
+        el('cbSlug').style.opacity = '0.6';
+        
+        el('cbName').value = board.name || '';
+        el('cbName').dataset.auto = 'false';
+        
+        el('cbDesc').value = board.description || '';
+        el('cbProjectDir').value = board.default_workdir || '';
+        el('cbIcon').value = board.icon || '';
+        
+        el('createBoardFeedback').textContent = '';
+        el('createBoardDialog').showModal();
+      };
+
+      if (el('btnDeleteBoard')) el('btnDeleteBoard').onclick = async () => {
+        if (!bs || !bs.value) return;
+        const board = loadedBoards.find(b => b.slug === bs.value);
+        if (!board) return;
+        if (!confirm(`Are you sure you want to delete/archive the board "${board.name}"?`)) return;
+        
+        try {
+           const res = await fetch(`/api/boards/${encodeURIComponent(board.slug)}`, { method: 'DELETE' }).then(r => r.json());
+           if (res && res.error) throw new Error(res.error);
+           await connect();
+           if (bs) { bs.value = ''; bs.onchange(); }
+        } catch (e) {
+           alert('Failed to delete board: ' + e.message);
+        }
+      };
+
       if (el('closeCreateBoard')) el('closeCreateBoard').onclick = () => el('createBoardDialog').close();
       if (el('cbSlug')) el('cbSlug').oninput = () => {
         if (!el('cbName').value || el('cbName').dataset.auto !== 'false') {
@@ -382,6 +447,7 @@
       
       if (el('createBoardForm')) el('createBoardForm').onsubmit = async (event) => {
         event.preventDefault();
+        const mode = el('createBoardForm').dataset.mode || 'create';
         const payload = {
           slug: el('cbSlug').value,
           name: el('cbName').value || el('cbSlug').value,
@@ -390,9 +456,16 @@
           icon: el('cbIcon').value
         };
         el('createBoardFeedback').style.color = 'var(--ink)';
-        el('createBoardFeedback').textContent = 'Creating...';
+        el('createBoardFeedback').textContent = mode === 'edit' ? 'Saving...' : 'Creating...';
         try {
-          const res = await call('POST', '/api/boards', payload);
+          let res;
+          if (mode === 'edit') {
+            res = await fetch(`/api/boards/${encodeURIComponent(payload.slug)}`, {
+              method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload)
+            }).then(r => r.json());
+          } else {
+            res = await call('POST', '/api/boards', payload);
+          }
           if (res && res.error) throw new Error(res.error);
           el('createBoardDialog').close();
           el('createBoardForm').reset();
@@ -406,7 +479,13 @@
       };
 
       const bs = document.getElementById('boardSelect');
-      if (bs) bs.onchange = async () => { tasks = []; render(); const latest = await call('GET', '/api/tasks').catch(()=>[]); apply(latest); render(); };
+      if (bs) bs.onchange = async () => { 
+        tasks = []; render(); 
+        const latest = await call('GET', '/api/tasks').catch(()=>[]); apply(latest); render(); 
+        if (el('btnBoardOptions')) {
+          el('btnBoardOptions').style.display = bs.value ? 'flex' : 'none';
+        }
+      };
       
       el('taskWorkspace').onchange = () => {
         const ws = el('taskWorkspace').value;

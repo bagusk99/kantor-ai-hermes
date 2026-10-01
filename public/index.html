@@ -19,9 +19,14 @@
     <div class="header-card">
       <div class="team-picker">
         <label for="boardSelect">Hermes Board</label>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 8px; position: relative;">
           <select id="boardSelect" style="flex: 1;"><option value="">Local Only (No Hermes)</option></select>
+          <button id="btnBoardOptions" class="btn" title="Board Options" style="display: none; padding: 0; aspect-ratio: 1 / 1; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; position: relative; z-index: 10;">⋮</button>
           <button id="btnCreateBoard" class="btn" title="Create New Board" style="padding: 0; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">+</button>
+          <div id="boardOptionsMenu" style="display: none; position: absolute; top: calc(100% + 4px); right: 45px; background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); flex-direction: column; z-index: 20; min-width: 140px; overflow: hidden;">
+            <button type="button" id="btnEditBoard" style="background: transparent; border: none; padding: 10px 12px; text-align: left; cursor: pointer; font-size: 13px; color: var(--ink); border-bottom: 1px solid var(--line);">✎ Edit Board</button>
+            <button type="button" id="btnDeleteBoard" style="background: transparent; border: none; padding: 10px 12px; text-align: left; cursor: pointer; font-size: 13px; color: #d32f2f;">🗑 Delete Board</button>
+          </div>
         </div>
       </div>
       <div class="team-picker"><label for="teamSelect">Team member</label><select id="teamSelect"><option value="">Pick initials</option></select></div>
@@ -80,7 +85,7 @@
     </div>
   </dialog>
   <dialog id="createBoardDialog" class="profile-modal" style="padding: 20px; border-radius: 12px; border: 1px solid var(--line); max-width: 600px; width: 100%; background: var(--sheet);">
-    <h2 style="margin-top:0">Create New Board</h2>
+    <h2 id="createBoardHeading" style="margin-top:0">Create New Board</h2>
     <form id="createBoardForm">
       <p id="createBoardFeedback" role="status" aria-live="polite" style="color: #a33a24; margin-top: 0; margin-bottom: 12px; font-weight: 500;"></p>
       

@@ -218,6 +218,26 @@ async function api(req, res, url) {
       return send(res, 500, { error: e.message });
     }
   }
+  const boardMatch = url.pathname.match(/^\/api\/boards\/([^/]+)$/);
+  if (boardMatch && req.method === 'PATCH') {
+    try {
+      const slug = decodeURIComponent(boardMatch[1]);
+      const payload = await readJson(req);
+      const data = await apiFetch('PATCH', `/api/plugins/kanban/boards/${encodeURIComponent(slug)}`, payload);
+      return send(res, 200, data);
+    } catch (e) {
+      return send(res, 500, { error: e.message });
+    }
+  }
+  if (boardMatch && req.method === 'DELETE') {
+    try {
+      const slug = decodeURIComponent(boardMatch[1]);
+      const data = await apiFetch('DELETE', `/api/plugins/kanban/boards/${encodeURIComponent(slug)}`);
+      return send(res, 200, data);
+    } catch (e) {
+      return send(res, 500, { error: e.message });
+    }
+  }
   if (url.pathname === '/api/team' && req.method === 'GET') {
     return send(res, 200, TEAM_PROFILES);
   }
