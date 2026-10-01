@@ -75,7 +75,7 @@
         <label for="taskWorkspace">Workspace</label><select id="taskWorkspace"><option value="scratch">temporary</option><option value="worktree">git worktree</option><option value="dir:.">directory - preserved</option></select>
         <div id="taskAbsPathContainer" style="display: none;"><label for="taskAbsPath">Absolute Path</label><input id="taskAbsPath" type="text" placeholder="/var/www/my-project"></div>
         <label for="taskAssignee">Assignee</label><select id="taskAssignee"><option value="">blank = dispatcher picks (otomatis)</option></select>
-        <label for="taskBrief">Instructions <span>(optional)</span></label><textarea id="taskBrief" rows="4" maxlength="5000" placeholder="Describe what is needed and the expected result"></textarea>
+        <label for="taskBrief">Instructions <span>(optional)</span></label><textarea id="taskBrief" rows="4" maxlength="100000" placeholder="Describe what is needed and the expected result"></textarea>
         <button class="task-primary" type="submit">Add task</button><p class="task-note" id="saveNote">Saved in this browser. Export tasks to keep a copy.</p><button type="button" id="exportTasks">Export tasks</button>
       </form>
       <section aria-labelledby="taskListHeading" class="kanban-section"><h2 id="taskListHeading" class="sr-only">Kanban Board</h2>

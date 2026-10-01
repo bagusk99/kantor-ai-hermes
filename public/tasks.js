@@ -71,7 +71,7 @@
   function validTask(task) {
     return task && typeof task.id === 'string' && typeof task.title === 'string' && task.title.trim() &&
       task.title.length <= 160 && typeof task.assignee === 'string' && task.assignee.trim() &&
-      Object.hasOwn(states, task.status) && typeof task.brief === 'string' && task.brief.length <= 5000 &&
+      Object.hasOwn(states, task.status) && typeof task.brief === 'string' && task.brief.length <= 100000 &&
       typeof task.result === 'string' && task.result.length <= 10000 &&
       (!['review','done'].includes(task.status) || task.result.trim()) && typeof task.createdAt === 'string';
   }
@@ -146,7 +146,7 @@
     article.append(node('div',task.result,'task-result'));
     const approve=action('Approve & finish',()=>reviewTask(task,'approve'));approve.className='task-primary';article.append(approve);
     const form=node('form'),label=node('label','Revision comments'),input=node('textarea'),key=draftKey(task,'review');
-    input.id=`review-${task.id}`;label.htmlFor=input.id;input.required=true;input.maxLength=5000;input.rows=3;input.value=draftRead(key);
+    input.id=`review-${task.id}`;label.htmlFor=input.id;input.required=true;input.maxLength=100000;input.rows=3;input.value=draftRead(key);
     input.oninput=()=>{input.setCustomValidity('');draftWrite(key,input.value);};
     const submit=node('button','Request revision');submit.type='submit';
     form.append(label,input,submit);form.onsubmit=e=>{e.preventDefault();if(!input.value.trim()){input.setCustomValidity('Describe the changes needed.');input.reportValidity();return;}reviewTask(task,'revise',input.value.trim());};article.append(form);
