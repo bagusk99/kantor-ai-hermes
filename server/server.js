@@ -401,7 +401,9 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             questions: currentStatus === 'blocked' ? (t.latest_summary || '') : undefined,
             createdAt: new Date(t.created_at * 1000).toISOString(),
             error: t.last_failure_error || undefined,
-            workerLog
+            workerLog,
+            workspace: t.workspace_kind || '',
+            absolutePath: t.workspace_path || ''
           };
         }));
         return send(res, 200, mapped);
@@ -550,7 +552,9 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             questions: currentStatus === 'blocked' ? summary : undefined,
             createdAt: new Date(hTask.created_at * 1000).toISOString(),
             error: hTask.last_failure_error || undefined,
-            workerLog
+            workerLog,
+            workspace: hTask.workspace_kind || '',
+            absolutePath: hTask.workspace_path || ''
           });
         }
         return send(res, 200, {id: taskId});

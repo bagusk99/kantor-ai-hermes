@@ -251,6 +251,11 @@
       if (expandedTaskId === task.id) {
         const article = node('article', undefined, 'task-item');
         article.onclick = e => e.stopPropagation();
+        
+        let wsText = task.workspace ? `Workspace: ${task.workspace}` : '';
+        if (task.absolutePath) wsText += wsText ? ` — ${task.absolutePath}` : `Path: ${task.absolutePath}`;
+        if (wsText) article.append(node('div', wsText, 'task-meta'));
+        
         if (task.brief) article.append(node('p', task.brief));
         if(task.history?.length) {
           const history = node('details'), summary = node('summary', `Draft history (${task.history.length})`);
