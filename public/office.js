@@ -1543,7 +1543,9 @@
   for(const agent of agents){const option=document.createElement('option');option.value=agent.n;option.textContent=`${agent.initials} · ${agent.role}`;$('teamSelect').append(option);}
   // Header faces: the first four members as initial chips in their desk-group colour, then the remaining count.
   for(const agent of agents.slice(0,4)){
-    const face=document.createElement('button');face.className='face';face.textContent=agent.initials;face.style.setProperty('--dot',hex(GROUPS[agent.group].color));
+    const parts = (agent.initials || '').split(/[-_\s]/).filter(Boolean);
+    const abbr = parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : (agent.initials || '').slice(0, 2).toUpperCase();
+    const face=document.createElement('button');face.className='face';face.textContent=abbr;face.style.setProperty('--dot',hex(GROUPS[agent.group].color));
     face.setAttribute('aria-label',`${agent.n}, ${agent.role}`);face.onclick=()=>{$('teamSelect').value=agent.n;selectAgent(agent);};$('teamFaces').append(face);
   }
   {const more=document.createElement('span');more.className='face more';more.textContent=`+${Math.max(0,agents.length-4)}`;more.setAttribute('aria-hidden','true');$('teamFaces').append(more);}
