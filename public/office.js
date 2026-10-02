@@ -38,7 +38,7 @@
     leadership: {name:'Leadership', x:-5.5, z:-3.5, color:0x2f4a6b},
     marketing: {name:'Marketing & Business', x:5.5, z:-3.5, color:0xb4623a},
     engineering: {name:'Engineering & Design', x:-5.5, z:6.5, color:0x3f7a58},
-    service: {name:'Customer Service', x:5.5, z:6.5, color:0x74598c}
+    service: {name:'Tester', x:5.5, z:6.5, color:0x74598c}
   };
   let TEAM = [];
   try {
@@ -329,7 +329,7 @@
     const face=new THREE.Mesh(new THREE.PlaneGeometry(2.7,1.39),new THREE.MeshBasicMaterial({map:boardTexture}));
     face.position.set(0,1.3,-3.5+side*.056);face.rotation.y=side>0?0:Math.PI;root.add(face);
   }
-  // Low shelf between Engineering and Customer Service keeps the room open while giving it a back and front.
+  // Low shelf between Engineering and Tester keeps the room open while giving it a back and front.
   box(.6,1.15,5.2,BALSA,0,0,6.8);
   for(const y of [.38,.76])box(.62,.03,5.22,0xb89c70,0,y,6.8);
   for(let i=0;i<10;i++)box(.4,.26+(i%3)*.04,.1+(i%2)*.06,[0x2f4a6b,CARD,0xb4623a,0x3f7a58,0x74598c][i%5],0,.42,4.6+i*.44);
