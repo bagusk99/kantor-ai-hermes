@@ -71,7 +71,7 @@
     <p class="task-note" id="taskNote">Status is changed by hand. Characters are a simulation and do not run AI yet.</p>
     <p id="taskFeedback" role="status" aria-live="polite"></p>
     <div class="task-layout">
-      <form id="taskForm"><h2>Create a task</h2><label for="taskTitle">Task</label><input id="taskTitle" required maxlength="160" placeholder="Example: Draft the content calendar">
+      <form id="taskForm"><h2>Create a task</h2><p id="activeBoardInfo" style="display:none; font-size:13px; color:var(--ink-2); margin-top:-8px; margin-bottom:16px;">Board: <span id="activeBoardName" style="font-weight:600; color:var(--ink);"></span></p><label for="taskTitle">Task</label><input id="taskTitle" required maxlength="160" placeholder="Example: Draft the content calendar">
         <label for="taskWorkspace">Workspace</label><select id="taskWorkspace"><option value="scratch">temporary</option><option value="worktree">git worktree</option><option value="dir:.">directory - preserved</option></select>
         <div id="taskAbsPathContainer" style="display: none;"><label for="taskAbsPath">Absolute Path</label><input id="taskAbsPath" type="text" placeholder="/var/www/my-project"></div>
         <label for="taskAssignee">Assignee</label><select id="taskAssignee"><option value="">blank = dispatcher picks (otomatis)</option></select>

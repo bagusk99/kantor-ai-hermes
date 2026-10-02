@@ -379,6 +379,19 @@
       if (name) el('taskAssignee').value = name;
       el('agentFilter').value = name || 'all';
       el('taskFilter').value = status; render();
+      const bs = el('boardSelect');
+      const info = el('activeBoardInfo');
+      if (bs && bs.value) {
+        const board = loadedBoards.find(b => b.slug === bs.value);
+        if (board && info) {
+          info.style.display = 'block';
+          el('activeBoardName').textContent = board.name || board.slug;
+        } else if (info) {
+          info.style.display = 'none';
+        }
+      } else if (info) {
+        info.style.display = 'none';
+      }
       el('taskDialog').showModal();
       el('taskTitle').focus();
     },
