@@ -375,21 +375,35 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
         }
         
         const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
-        const mapped = allTasks.map(t => {
+        const mapped = await Promise.all(allTasks.map(async t => {
           const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (t.assignee || '').toLowerCase()) || t.assignee || '';
+          const currentStatus = statusMap[t.status] || 'queued';
+          
+          let workerLog = currentStatus === 'active' ? (t.latest_summary || undefined) : (t.latest_summary || undefined);
+          if (currentStatus === 'active') {
+            try {
+              const logData = await apiFetch('GET', `/api/plugins/kanban/tasks/${t.id}/log?board=${encodeURIComponent(board)}`);
+              if (logData && logData.content) {
+                workerLog = logData.content;
+              }
+            } catch (e) {
+              // fallback to latest_summary if fetching log fails
+            }
+          }
+          
           return {
             id: t.id,
             title: t.title,
             brief: t.body || '',
             assignee: matchedAssignee,
-            status: statusMap[t.status] || 'queued',
-            result: (statusMap[t.status] === 'review' || statusMap[t.status] === 'done') ? (t.result || t.latest_summary || '') : '',
-            questions: statusMap[t.status] === 'blocked' ? (t.latest_summary || '') : undefined,
+            status: currentStatus,
+            result: (currentStatus === 'review' || currentStatus === 'done') ? (t.result || t.latest_summary || '') : '',
+            questions: currentStatus === 'blocked' ? (t.latest_summary || '') : undefined,
             createdAt: new Date(t.created_at * 1000).toISOString(),
             error: t.last_failure_error || undefined,
-            workerLog: statusMap[t.status] === 'active' ? (t.latest_summary || undefined) : (t.latest_summary || undefined)
+            workerLog
           };
-        });
+        }));
         return send(res, 200, mapped);
       } catch (e) {
         return send(res, 200, []);
@@ -510,20 +524,33 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
         const hTask = data.task;
         
         if (hTask) {
-          const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
+          const currentStatus = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'}[hTask.status] || 'queued';
           let summary = hTask.latest_summary || '';
           const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (hTask.assignee || '').toLowerCase()) || hTask.assignee || '';
+          
+          let workerLog = summary;
+          if (currentStatus === 'active') {
+            try {
+              const logData = await apiFetch('GET', `/api/plugins/kanban/tasks/${hTask.id}/log?board=${encodeURIComponent(board)}`);
+              if (logData && logData.content) {
+                workerLog = logData.content;
+              }
+            } catch (e) {
+              // fallback
+            }
+          }
+          
           return send(res, 200, {
             id: hTask.id,
             title: hTask.title,
             brief: hTask.body || '',
             assignee: matchedAssignee,
-            status: statusMap[hTask.status] || 'queued',
-            result: (statusMap[hTask.status] === 'review' || statusMap[hTask.status] === 'done') ? (hTask.result || summary || '') : '',
-            questions: statusMap[hTask.status] === 'blocked' ? summary : undefined,
+            status: currentStatus,
+            result: (currentStatus === 'review' || currentStatus === 'done') ? (hTask.result || summary || '') : '',
+            questions: currentStatus === 'blocked' ? summary : undefined,
             createdAt: new Date(hTask.created_at * 1000).toISOString(),
             error: hTask.last_failure_error || undefined,
-            workerLog: statusMap[hTask.status] === 'active' ? summary : summary
+            workerLog
           });
         }
         return send(res, 200, {id: taskId});
