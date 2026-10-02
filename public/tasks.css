@@ -1,8 +1,10 @@
-dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max-height:calc(100dvh - 32px);overflow:auto;background:var(--sheet);color:var(--ink);border:1px solid var(--line);border-top-width:3px;border-radius:4px;padding:24px;font:14px/1.5 var(--sans);user-select:text;z-index:20}
+dialog#taskDialog:not([open]){display:none;}
+dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;background:var(--sheet);color:var(--ink);border:1px solid var(--line);border-top-width:3px;border-radius:4px;padding:24px;font:14px/1.5 var(--sans);user-select:text;z-index:20}
 #taskDialog::backdrop{background:rgba(42,38,34,.5)}
 #taskDialog h1{font-size:26px;margin:0;letter-spacing:-.4px}#taskDialog h2{font-size:17px;margin:0 0 16px}
 .task-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.task-header p,.task-note,#taskSummary{color:var(--ink-2);margin:6px 0 16px}.task-note{font-size:13px}
-.task-layout{display:grid;grid-template-columns:minmax(250px, 320px) 1fr;gap:32px;margin-top:20px;border-top:1px solid var(--line);padding-top:20px}
+.task-layout{display:grid;grid-template-columns:minmax(250px, 320px) 1fr;gap:32px;margin-top:20px;border-top:1px solid var(--line);padding-top:20px;flex:1;min-height:0}
+#taskForm{overflow-y:auto;padding-right:8px;}
 #taskDialog label{display:block;margin:12px 0 6px;font-weight:600}#taskDialog label span{font-weight:400;color:var(--ink-2)}
 #taskDialog input,#taskDialog select,#taskDialog textarea{display:block;width:100%;min-width:0;background:#fffdf8;color:var(--ink);border:1px solid var(--line);border-radius:2px;padding:10px;font:inherit;min-height:44px}#taskDialog textarea{resize:vertical}#taskDialog input::placeholder,#taskDialog textarea::placeholder{color:#6b6459}
 #taskDialog button{min-height:44px;padding:9px 13px;background:var(--sheet);color:var(--ink);border:1px solid var(--line);border-radius:2px;font:inherit;font-weight:500;cursor:pointer}#taskDialog button:hover{background:var(--hover)}#taskDialog button:active{background:#d9d2c3}
@@ -12,7 +14,7 @@ dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max
 .task-filters{display:grid;grid-template-columns:1fr 1fr;gap:12px}.task-filters label{margin-top:0!important}
 .task-item{border-top:1px solid var(--line);padding:18px 0;overflow-wrap:anywhere}.task-item h3{font-size:16px;margin:0 0 6px}.task-meta{color:var(--ink-2);font:500 12px var(--mono)}.task-item p{white-space:pre-wrap;margin:8px 0}.task-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.task-empty{padding:24px 0;color:var(--ink-2);border-top:1px solid var(--line)}.task-result{margin-top:12px;padding:12px;background:var(--paper);border:1px solid var(--line);white-space:pre-wrap}
 #taskFeedback:not(:empty){padding:12px;border:1px solid var(--line);background:var(--paper);border-radius:2px;margin-top:12px}#taskSummary{margin-top:12px}#taskDialog button:disabled{opacity:.6;cursor:default}
-@media(max-width:640px){dialog#taskDialog{width:100%;max-width:none;max-height:100dvh;height:100dvh;border-radius:0;padding:20px 16px;padding-bottom:max(20px,env(safe-area-inset-bottom))}.task-layout{grid-template-columns:1fr;gap:28px}.task-header h1{font-size:22px}.task-filters{grid-template-columns:1fr}.task-header p{max-width:220px}}
+@media(max-width:640px){dialog#taskDialog{width:100%;max-width:none;max-height:100dvh;height:100dvh;border-radius:0;padding:20px 16px;padding-bottom:max(20px,env(safe-area-inset-bottom));display:block;overflow:auto}.task-layout{grid-template-columns:1fr;gap:28px;display:block}.task-header h1{font-size:22px}.task-filters{grid-template-columns:1fr}.task-header p{max-width:220px}#taskForm{overflow-y:visible;padding-right:0}.kanban-section{overflow:visible;height:auto}.kanban-board{overflow-x:auto;padding-bottom:20px}.kanban-column{max-height:none;overflow-y:visible}}
 .task-agent{color:#2f6b47;font-size:13px}.task-error{color:#a33a24;font-size:13px}
 .task-questions{background:#fff7e6;border-color:#f0d9a8}
 
@@ -22,6 +24,7 @@ dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max
   flex-direction: column;
   overflow: hidden;
   height: 100%;
+  min-height: 0;
 }
 .kanban-board {
   display: flex;
@@ -29,15 +32,17 @@ dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max
   overflow-x: auto;
   padding: 8px 0;
   flex: 1;
+  min-height: 0;
 }
 .kanban-column {
-  flex: 0 0 380px;
+  flex: 0 0 440px;
   background: var(--paper);
   border-radius: 8px;
-  padding: 12px;
+  padding: 0 12px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  overflow-y: auto;
+  max-height: 100%;
 }
 .kanban-col-title {
   margin: 0;
@@ -48,6 +53,12 @@ dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max
   color: var(--ink-2);
   border-bottom: 2px solid var(--line);
   padding-bottom: 8px;
+  padding-top: 12px;
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 10;
+  margin-bottom: 12px;
 }
 .kanban-card {
   background: var(--sheet);
@@ -57,6 +68,7 @@ dialog#taskDialog{position:fixed;inset:0;margin:auto;width:calc(100% - 32px);max
   cursor: pointer;
   transition: transform 0.1s, border-color 0.2s;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  margin-bottom: 12px;
 }
 .kanban-card:hover {
   border-color: var(--accent);
