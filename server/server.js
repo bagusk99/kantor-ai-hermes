@@ -50,7 +50,24 @@ async function apiFetch(method, path, body = null) {
     return fetch(`http://127.0.0.1:9119${path}`, opts);
   };
   
-  let res = await doFetch(token);
+  let res;
+  let attempts = 3;
+  while (attempts > 0) {
+    try {
+      res = await doFetch(token);
+      break;
+    } catch (err) {
+      const code = err.cause?.code || err.code;
+      if (['ECONNREFUSED', 'UND_ERR_SOCKET', 'ECONNRESET'].includes(code) || err.message === 'fetch failed' || err.message.includes('other side closed')) {
+        attempts--;
+        if (attempts === 0) throw err;
+        await new Promise(r => setTimeout(r, 800));
+      } else {
+        throw err;
+      }
+    }
+  }
+
   if (res.status === 401) {
     dashboardToken = null;
     token = await getHermesToken();
@@ -103,15 +120,15 @@ try { teamOverrides = JSON.parse(fs.readFileSync('data/team-overrides.json', 'ut
 let TEAM_PROFILES = [];
 const MEMBERS = new Set();
 async function rebuildTeam() {
-  TEAM_PROFILES = [];
   try {
     const data = await apiFetch('GET', '/api/profiles');
     if (!data || !data.profiles) return;
     let c = 0;
+    const newProfiles = [];
     for (const p of data.profiles) {
       if (p.name !== 'default') {
         c++;
-        TEAM_PROFILES.push({
+        newProfiles.push({
           n: p.name,
           initials: p.name,
           gender: c % 2 === 0 ? 'female' : 'male',
@@ -120,6 +137,7 @@ async function rebuildTeam() {
         });
       }
     }
+    TEAM_PROFILES = newProfiles;
   } catch(e) {
     console.error('Failed to load profiles:', e.message);
   }
@@ -292,6 +310,7 @@ async function api(req, res, url) {
       // or map it if Hermes expose DELETE /api/profiles/:name. 
       // Since it's a destructive op on the file system, fallback to CLI if API is not available.
       cp.execSync(`hermes profile delete -y "${name.replace(/"/g, '')}"`, {stdio: 'pipe'});
+      await new Promise(r => setTimeout(r, 1000));
       if (teamOverrides[name]) {
         delete teamOverrides[name];
         fs.writeFileSync('data/team-overrides.json', JSON.stringify(teamOverrides));
@@ -309,6 +328,7 @@ async function api(req, res, url) {
     try {
       if (input.name && input.name !== name) {
         cp.execSync(`hermes profile rename "${name}" "${input.name.replace(/"/g, '')}"`, {stdio: 'pipe'});
+        await new Promise(r => setTimeout(r, 1000));
         if (teamOverrides[name]) {
           teamOverrides[input.name] = teamOverrides[name];
           delete teamOverrides[name];
@@ -340,6 +360,7 @@ async function api(req, res, url) {
       let cmd = `hermes profile create "${input.name.replace(/"/g, '')}"`;
       if (input.description) cmd += ` --description "${input.description.replace(/"/g, '\\"')}"`;
       cp.execSync(cmd, {stdio: 'pipe'});
+      await new Promise(r => setTimeout(r, 1000));
       if (input.soul) {
         const data = await apiFetch('GET', '/api/profiles');
         const prof = (data.profiles || []).find(p => p.name === input.name);
