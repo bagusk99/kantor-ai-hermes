@@ -177,21 +177,28 @@
     } else if (task.status === 'queued') article.append(node('p', 'Waiting for the AI agent to pick this up.', 'task-agent'));
     else if (task.status === 'active') {
       const logText = task.workerLog ? task.workerLog.trim() : '';
-      if (logText) {
-        const details = node('details');
-        const summary = node('summary', agent.mode === 'claude' ? 'The AI agent is working on this…' : 'Dry run in progress…');
-        summary.className = 'task-agent task-agent-summary';
-        const logBox = node('div', logText, 'task-worker-log');
-        details.append(summary, logBox);
-        article.append(details);
-      } else {
-        const details = node('details');
-        const summary = node('summary', agent.mode === 'claude' ? 'The AI agent is working on this…' : 'Dry run in progress…');
-        summary.className = 'task-agent task-agent-summary';
-        const logBox = node('div', 'Initializing worker...', 'task-worker-log');
-        details.append(summary, logBox);
-        article.append(details);
-      }
+      const details = node('details');
+      const summary = node('summary', agent.mode === 'claude' ? 'The AI agent is working on this…' : 'Dry run in progress…');
+      summary.className = 'task-agent task-agent-summary';
+      const logBox = node('div', logText ? logText : 'Initializing worker...', 'task-worker-log');
+      logBox.id = `log-box-${task.id}`;
+      
+      if (expandedTaskLogs.has(task.id)) details.open = true;
+      
+      details.ontoggle = () => {
+        if (details.open) {
+          expandedTaskLogs.add(task.id);
+          setTimeout(() => {
+            const box = document.getElementById(`log-box-${task.id}`);
+            if (box) box.scrollTop = box.scrollHeight;
+          }, 0);
+        } else {
+          expandedTaskLogs.delete(task.id);
+        }
+      };
+      
+      details.append(summary, logBox);
+      article.append(details);
     }
     else {
       article.append(node('p', task.by === 'dry-run' ? 'Dry run result, not AI output. Review before use.' : task.by ? `Draft by Claude (${task.by}). Review before use.` : 'Result', 'task-agent'));
@@ -202,6 +209,8 @@
   }
   const announce = () => document.dispatchEvent(new CustomEvent('officetasks:change'));
   let expandedTaskId = null;
+  let expandedTaskLogs = new Set();
+  let expandedTaskHistory = new Set();
   function render() {
     const focused=el('taskList').contains(document.activeElement)&&document.activeElement.tagName==='TEXTAREA'?{id:document.activeElement.id,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd}:null;
     announce();
@@ -243,7 +252,21 @@
         const article = node('article', undefined, 'task-item');
         article.onclick = e => e.stopPropagation();
         if (task.brief) article.append(node('p', task.brief));
-        if(task.history?.length){const history=node('details'),summary=node('summary',`Draft history (${task.history.length})`);history.append(summary);task.history.forEach((draft,i)=>{history.append(node('h4',`Draft ${i+1} · ${draft.by||'Saved'}`));if(draft.feedback)history.append(node('p',`Revision brief: ${draft.feedback}`));history.append(node('div',draft.result,'task-result'));});article.append(history);}
+        if(task.history?.length) {
+          const history = node('details'), summary = node('summary', `Draft history (${task.history.length})`);
+          if (expandedTaskHistory.has(task.id)) history.open = true;
+          history.ontoggle = () => {
+            if (history.open) expandedTaskHistory.add(task.id);
+            else expandedTaskHistory.delete(task.id);
+          };
+          history.append(summary);
+          task.history.forEach((draft, i) => {
+            history.append(node('h4', `Draft ${i+1} · ${draft.by || 'Saved'}`));
+            if (draft.feedback) history.append(node('p', `Revision brief: ${draft.feedback}`));
+            history.append(node('div', draft.result, 'task-result'));
+          });
+          article.append(history);
+        }
         const actions = node('div', undefined, 'task-actions');
         if (!team.some(person => person.n === task.assignee)) {
           article.append(node('p', 'This assignee comes from an old prototype. Pick a team member to continue.'));
@@ -286,6 +309,10 @@
       if(cols[task.status]) cols[task.status].append(card);
     }
     if(focused){const input=document.getElementById(focused.id);if(input){input.focus({preventScroll:true});input.setSelectionRange(focused.start,focused.end);}}
+    for (const taskId of expandedTaskLogs) {
+      const box = document.getElementById(`log-box-${taskId}`);
+      if (box) box.scrollTop = box.scrollHeight;
+    }
   }
 
   // Look for the server once at start. A static host (or no server) keeps the browser-only behaviour.
