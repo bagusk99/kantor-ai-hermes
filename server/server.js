@@ -1,4 +1,4 @@
-// Kantor Kita server: serves public/ and a small task API. Tasks assigned to a connected
+// Kantor AI server: serves public/ and a small task API. Tasks assigned to a connected
 // team member (server/agents.js) are worked by Claude, or by a labelled dry run when no API key is set.
 // No login yet, so it only listens on this machine.
 
@@ -617,7 +617,7 @@ const server = http.createServer(async (req, res) => {
   catch (error) { send(res, error.status || 500, {error: error.status ? error.message : 'Server error.'}); if (!error.status) console.error(error); }
 });
 server.listen(PORT, HOST, async () => {
-  console.log(`Kantor Kita: http://${HOST}:${PORT}`);
+  console.log(`Kantor AI: http://${HOST}:${PORT}`);
   console.log('AI agents: Using Hermes gateway. Trying to reach dashboard at 9119...');
   try {
     await rebuildTeam();

@@ -1,9 +1,11 @@
-# Kantor Kita (Our Office)
+# Kantor AI (AI Office)
 
 ![Screenshot of the program running](image.png)
 ![Screenshot of the program running 2](image1.png)
 
-**Kantor Kita** is an interactive, 3D office diorama that serves as a visual wrapper and task management UI for **Hermes Agent**. It visualizes your local AI agents as characters working in a virtual office, providing a fun and intuitive way to see what your AI workforce is doing behind the scenes.
+> **Shoutout:** This project is originally based on [Kantor AI by kangkungmozzarella](https://github.com/kangkungmozzarella/kantor-ai).
+
+**Kantor AI** is an interactive, 3D office diorama that serves as a visual wrapper and task management UI for **Hermes Agent**. It visualizes your local AI agents as characters working in a virtual office, providing a fun and intuitive way to see what your AI workforce is doing behind the scenes.
 
 Team members shown in the office are actual Hermes AI profiles on your system. AI agents will automatically process tasks assigned to them, while the office UI visualizes their activities in real time.
 

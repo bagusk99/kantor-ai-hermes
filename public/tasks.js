@@ -359,7 +359,7 @@
     el('taskNote').textContent = info.mode === 'claude'
       ? `${names} works with Claude and submits drafts for your review. Everyone else is a simulation; change their status by hand.`
       : `${names} is connected in dry-run mode (no API key yet), so results are placeholders. Everyone else is a simulation; change their status by hand.`;
-    el('saveNote').textContent = 'Saved on the Kantor Kita server. Export tasks to keep a copy.';
+    el('saveNote').textContent = 'Saved on the Kantor AI server. Export tasks to keep a copy.';
     render();
     tasks.filter(t => t.status === 'active' && team.some(person => person.n === t.assignee)).forEach(t => changed(t.assignee));
     document.dispatchEvent(new CustomEvent('officetasks:server', {detail: info}));

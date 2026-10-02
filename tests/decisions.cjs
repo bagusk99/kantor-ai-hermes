@@ -7,7 +7,7 @@ const PORT=4185,dir=fs.mkdtempSync(path.join(os.tmpdir(),'kantor-'));
 const api=(p,opts={})=>fetch(`http://127.0.0.1:${PORT}${p}`,{...opts,headers:{'content-type':'application/json'}}).then(async r=>({status:r.status,body:await r.json().catch(()=>null)}));
 (async()=>{
  const server=spawn(process.execPath,[path.join(__dirname,'../server/server.js')],{env:{...process.env,PORT:String(PORT),DATA_DIR:dir,ENV_FILE:'/nonexistent',ANTHROPIC_API_KEY:'',DRY_RUN_DELAY_MS:'800'},stdio:['ignore','pipe','inherit']});
- await new Promise(r=>server.stdout.on('data',d=>String(d).includes('Kantor Kita:')&&r()));
+ await new Promise(r=>server.stdout.on('data',d=>String(d).includes('Kantor AI:')&&r()));
  const browser=await chromium.launch();
  try{
   const members=(await api('/api/agents')).body.members;

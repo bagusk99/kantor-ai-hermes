@@ -1,4 +1,4 @@
-// Kantor Kita server: serves public/ and a small task API. Tasks assigned to a connected
+// Kantor AI server: serves public/ and a small task API. Tasks assigned to a connected
 // team member (server/agents.js) are worked by Claude, or by a labelled dry run when no API key is set.
 // No login yet, so it only listens on this machine.
 const http = require('node:http');
@@ -185,7 +185,7 @@ const server = http.createServer(async (req, res) => {
   catch (error) { send(res, error.status || 500, {error: error.status ? error.message : 'Server error.'}); if (!error.status) console.error(error); }
 });
 server.listen(PORT, HOST, () => {
-  console.log(`Kantor Kita: http://${HOST}:${PORT}`);
+  console.log(`Kantor AI: http://${HOST}:${PORT}`);
   console.log(DRY_RUN ? 'AI agents: dry run (set ANTHROPIC_API_KEY in .env to use Claude)' : `AI agents: ${Object.entries(agents).map(([name, a]) => `${name} → ${modelOf(a)}`).join(', ')}`);
   // Tasks left active by a previous run go back to the queue and are picked up again.
   let reset = false; tasks.forEach(task => { if (task.status === 'active' && agents[task.assignee]) { task.status = 'queued'; reset = true; } }); if (reset) save();

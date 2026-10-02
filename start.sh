@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Menjalankan Backend Server Kantor Kita..."
+echo "🚀 Menjalankan Backend Server Kantor AI..."
 echo "============================================="
 
 # Cek apakah file .env ada

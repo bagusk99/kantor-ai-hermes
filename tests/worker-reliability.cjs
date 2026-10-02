@@ -6,7 +6,7 @@ const {spawn}=require('node:child_process');
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'kantor-worker-'));
  const proc=spawn(process.execPath,['server/server.js'],{env:{...process.env,PORT:'4185',DATA_DIR:dir,ENV_FILE:'/nonexistent',ANTHROPIC_API_KEY:'test-only',ANTHROPIC_DRY_RUN:'0',ANTHROPIC_BASE_URL:`http://127.0.0.1:${mock.address().port}`},stdio:['ignore','pipe','pipe']});
  try{
- await new Promise((resolve,reject)=>{proc.stdout.on('data',d=>{if(String(d).includes('Kantor Kita:'))resolve();});proc.on('error',reject);proc.on('exit',()=>reject(new Error('server exited')));});
+ await new Promise((resolve,reject)=>{proc.stdout.on('data',d=>{if(String(d).includes('Kantor AI:'))resolve();});proc.on('error',reject);proc.on('exit',()=>reject(new Error('server exited')));});
  const call=async(method,url,data)=>{const r=await fetch('http://127.0.0.1:4185/api'+url,{method,headers:{'content-type':'application/json'},body:data&&JSON.stringify(data)});return {status:r.status,data:await r.json()};};
  let r=await call('POST','/tasks',{title:'First',assignee:'Koh Arman',status:'active'});assert.equal(r.status,201);
  assert.equal((await call('POST','/tasks',{title:'Second',assignee:'Koh Arman',status:'active'})).status,409);

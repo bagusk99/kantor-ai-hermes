@@ -6,7 +6,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 function start(port,env){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'kantor-'));
   const child=spawn(process.execPath,[path.join(__dirname,'../server/server.js')],{env:{...process.env,PORT:String(port),DATA_DIR:dir,ENV_FILE:'/nonexistent',ANTHROPIC_API_KEY:'',DRY_RUN_DELAY_MS:'1500',...env},stdio:['ignore','pipe','pipe']});
-  return new Promise((resolve,reject)=>{child.stdout.on('data',d=>{if(String(d).includes('Kantor Kita:'))resolve({child,dir});});child.on('exit',code=>reject(new Error('server exited '+code)));});
+  return new Promise((resolve,reject)=>{child.stdout.on('data',d=>{if(String(d).includes('Kantor AI:'))resolve({child,dir});});child.on('exit',code=>reject(new Error('server exited '+code)));});
 }
 const api=(port,p,opts={})=>fetch(`http://127.0.0.1:${port}${p}`,{...opts,headers:{'content-type':'application/json'}}).then(async r=>({status:r.status,body:await r.json().catch(()=>null)}));
 const waitFor=async(check,ms=20000)=>{const end=Date.now()+ms;while(Date.now()<end){const v=await check();if(v)return v;await new Promise(r=>setTimeout(r,250));}throw new Error('timed out');};
