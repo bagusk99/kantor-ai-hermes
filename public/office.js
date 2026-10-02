@@ -1787,7 +1787,39 @@
   }
   $('decisions').onclick=()=>window.officeTasks.open(null,'blocked');
   document.addEventListener('officetasks:change',()=>{drawBoard();drawStats();});
-  window.officeTasks.init(TEAM,(name,state,title)=>{const a=agents.find(a=>a.n===name);if(a&&window.officeTasks.activeFor(name))setPath(a,a.desk);if(a&&SAY[state])say(a,SAY[state]);if(a&&state)log(`${name} ${TASK_LOG[state]}: ${title}`,a.group);},name=>{const a=agents.find(a=>a.n===name);if(a)selectAgent(a);});
+  
+  const originalTitle = document.title;
+  window.addEventListener('focus', () => { document.title = originalTitle; });
+  function playNotificationSound() {
+    try {
+      const Audio = window.AudioContext || window.webkitAudioContext;
+      if (!Audio) return;
+      if (!window.notifCtx) window.notifCtx = new Audio();
+      const ctx = window.notifCtx;
+      if (ctx.state === 'suspended') ctx.resume();
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+      osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 0.02);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {}
+  }
+
+  window.officeTasks.init(TEAM,(name,state,title)=>{
+    const a=agents.find(a=>a.n===name);
+    if(a&&window.officeTasks.activeFor(name))setPath(a,a.desk);
+    if(a&&SAY[state])say(a,SAY[state]);
+    if(a&&state)log(`${name} ${TASK_LOG[state]}: ${title}`,a.group);
+    
+    if (state === 'done' || state === 'review' || state === 'blocked') {
+      playNotificationSound();
+      if (!document.hasFocus()) document.title = '(•) ' + originalTitle;
+    }
+  },name=>{const a=agents.find(a=>a.n===name);if(a)selectAgent(a);});
   const projected=new THREE.Vector3(),world=new THREE.Vector3();let last=performance.now();
   function frame(now) {
     // Allow slower renderers to keep pace, while limiting jumps after a background-tab pause.
