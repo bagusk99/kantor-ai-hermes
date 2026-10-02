@@ -23,7 +23,12 @@ Team members shown in the office are actual Hermes AI profiles on your system. A
 - Hermes CLI installed on your system.
 
 ### 1. Hermes Setup
-For now, all commands from this UI to Hermes are executed via the Hermes CLI and by directly reading the local `kanban.db` via SQLite. **That is why having the Hermes CLI working properly on your system is mandatory, and it does not require a Gateway Token.**
+The integration with Hermes uses a combination of methods:
+1. **CLI Commands**: Used for profile management (`hermes profile create`, `delete`, `rename`, etc.).
+2. **Dashboard API (HTTP)**: Communicates with the Hermes Dashboard (default `http://127.0.0.1:9119`) for Kanban operations (boards, tasks). It automatically scrapes the session token from the dashboard.
+3. **Webhooks**: Receives real-time events from Hermes via `POST /api/webhook/hermes`.
+
+**That is why having the Hermes CLI installed, the Hermes Dashboard running (`hermes dashboard`), and the Hermes Gateway running (`hermes gateway start`) is mandatory.** For more info, please read the official Hermes documentation.
 
 Initialize a Kanban board on your machine if you haven't already:
 ```sh
@@ -52,7 +57,13 @@ hooks:
         - post_tool_call
 ```
 
-### 3. Running the Application
+### 3. Running Hermes Dashboard
+Kantor AI relies on the Hermes Dashboard API to manage tasks and boards. Open a new terminal and start the dashboard:
+```sh
+hermes dashboard
+```
+
+### 4. Running the Application
 Start the Node.js server to serve the visual office UI:
 ```sh
 npm install
@@ -60,13 +71,15 @@ npm start
 ```
 Open **http://127.0.0.1:3000** in your web browser.
 
-### 4. Running the AI Worker
-To let the AI agents start working on queued tasks autonomously (thanks to the "auto" orchestration you set earlier), open a new terminal and run the Hermes gateway:
+### 5. Running the AI Worker
+To let the AI agents start working on queued tasks autonomously (thanks to the "auto" orchestration you set earlier), open another terminal and run the Hermes gateway:
 ```sh
 hermes gateway start
 ```
 
 *(The gateway will run in the background to process the tasks, while this visual office UI updates automatically as they work).*
+
+> **WIP Notice:** We are currently in the process of slowly migrating the architecture to rely entirely on the full **Hermes Gateway**. In the future, this project will no longer use CLI commands or depend on the Hermes Dashboard API (port 9119) for integrations.
 
 ## Task Lifecycle & Management
 - Click **Tasks** at the top of the UI or select a character to assign tasks.
