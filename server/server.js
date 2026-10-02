@@ -423,7 +423,7 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
           title: input.title,
           body: input.brief || null,
           assignee: input.assignee || null,
-          triage: true
+          triage: !input.assignee
         };
         if (input.workspace) {
           if (input.workspace === 'scratch') {
