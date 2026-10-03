@@ -71,8 +71,8 @@
   function validTask(task) {
     return task && typeof task.id === 'string' && typeof task.title === 'string' && task.title.trim() &&
       task.title.length <= 160 && typeof task.assignee === 'string' && task.assignee.trim() &&
-      Object.hasOwn(states, task.status) && typeof task.brief === 'string' && task.brief.length <= 100000 &&
-      typeof task.result === 'string' && task.result.length <= 10000 &&
+      Object.hasOwn(states, task.status) && typeof task.brief === 'string' &&
+      typeof task.result === 'string' &&
       (!['review','done'].includes(task.status) || task.result.trim()) && typeof task.createdAt === 'string';
   }
   function node(tag, text, className) {
@@ -146,7 +146,7 @@
     article.append(node('div',task.result,'task-result'));
     const approve=action('Approve & finish',()=>reviewTask(task,'approve'));approve.className='task-primary';article.append(approve);
     const form=node('form'),label=node('label','Revision comments'),input=node('textarea'),key=draftKey(task,'review');
-    input.id=`review-${task.id}`;label.htmlFor=input.id;input.required=true;input.maxLength=100000;input.rows=3;input.value=draftRead(key);
+    input.id=`review-${task.id}`;label.htmlFor=input.id;input.required=true;input.rows=3;input.value=draftRead(key);
     input.oninput=()=>{input.setCustomValidity('');draftWrite(key,input.value);};
     const submit=node('button','Request revision');submit.type='submit';
     form.append(label,input,submit);form.onsubmit=e=>{e.preventDefault();if(!input.value.trim()){input.setCustomValidity('Describe the changes needed.');input.reportValidity();return;}reviewTask(task,'revise',input.value.trim());};article.append(form);
@@ -159,7 +159,7 @@
   function answerControls(task,article){
     article.append(node('p',`${displayName(task.assignee)} needs more information before drafting:`,'task-agent'),node('div',task.questions,'task-result task-questions'));
     const form=node('form'),label=node('label','Your answer'),input=node('textarea'),key=draftKey(task,'answer');
-    input.id=`answer-${task.id}`;label.htmlFor=input.id;input.required=true;input.maxLength=3000;input.rows=3;input.value=draftRead(key);
+    input.id=`answer-${task.id}`;label.htmlFor=input.id;input.required=true;input.rows=3;input.value=draftRead(key);
     input.oninput=()=>{input.setCustomValidity('');draftWrite(key,input.value);};
     const submit=node('button','Send answer');submit.type='submit';submit.className='task-primary';submit.style.marginTop='12px';
     form.append(label,input,submit);form.onsubmit=e=>{e.preventDefault();if(!input.value.trim()){input.setCustomValidity('Write an answer first.');input.reportValidity();return;}answerTask(task,input.value.trim());};
@@ -290,7 +290,7 @@
           actions.append(action('Back to queue', () => update(task.id, 'queued')));
           const form = node('form');
           const label = node('label', 'Result'); label.htmlFor = `result-${task.id}`;
-          const input = node('textarea'); input.id = label.htmlFor; input.required = true; input.maxLength = 10000; input.rows = 3;
+          const input = node('textarea'); input.id = label.htmlFor; input.required = true; input.rows = 3;
           const key=draftKey(task,'result');input.value=draftRead(key);
           input.placeholder = 'Write the result or a document link before finishing the task';
           const submit = node('button', 'Save result & finish'); submit.type = 'submit'; submit.className = 'task-primary';

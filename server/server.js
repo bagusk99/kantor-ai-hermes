@@ -187,8 +187,8 @@ async function work(name) {
     if (current && current.status === 'active' && current.assignee === name && current.runId === runId) {
       const by=DRY_RUN?'dry-run':modelOf(agents[name]),asked=answer.match(/^QUESTIONS:\s*([\s\S]+)/);
       // The agent asked instead of guessing: park the task until someone answers.
-      if(asked){Object.assign(current,{status:'blocked',questions:asked[1].trim().slice(0,2000),askedBy:by,runId:null,version:(current.version||0)+1,updatedAt:now()});save();return;}
-      const draft={result:answer.slice(0,10000),by,createdAt:now(),feedback:input.feedback||''};
+      if(asked){Object.assign(current,{status:'blocked',questions:asked[1].trim(),askedBy:by,runId:null,version:(current.version||0)+1,updatedAt:now()});save();return;}
+      const draft={result:answer,by,createdAt:now(),feedback:input.feedback||''};
       Object.assign(current, {status:'review',result:draft.result,by:draft.by,history:[...(current.history||[]),draft],runId:null,version:(current.version||0)+1,updatedAt:now()});save();
     }
   } catch (error) {
@@ -215,8 +215,8 @@ function newTask(input) {
   if(!input||typeof input!=='object')return null;
   const title = text(input.title, 160), assignee = text(input.assignee, 80);
   if (!title || !assignee) return null;
-  const status = STATES.has(input.status) ? input.status : 'queued', result = text(input.result, 10000);
-  return {id: crypto.randomUUID(), title, assignee, brief: text(input.brief, 100000), status: ['done','review'].includes(status) && !result ? 'queued' : status, result, createdAt: now()};
+  const status = STATES.has(input.status) ? input.status : 'queued', result = text(input.result);
+  return {id: crypto.randomUUID(), title, assignee, brief: text(input.brief), status: ['done','review'].includes(status) && !result ? 'queued' : status, result, createdAt: now()};
 }
 async function api(req, res, url) {
     if (url.pathname === '/api/boards' && req.method === 'GET') {
@@ -517,13 +517,13 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
       try {
         const taskId = match[1];
         if (input.action === 'answer') {
-           const answerText = typeof input.answer === 'string' ? input.answer.trim().slice(0, 3000) : '';
+           const answerText = typeof input.answer === 'string' ? input.answer.trim() : '';
            if (answerText) {
              await apiFetch('POST', `/api/plugins/kanban/tasks/${taskId}/comments?board=${encodeURIComponent(board)}`, {text: answerText, author: 'user'});
            }
            await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'ready'});
         } else if (input.action === 'revise') {
-           const feedbackText = typeof input.feedback === 'string' ? input.feedback.trim().slice(0, 100000) : 'Please revise.';
+           const feedbackText = typeof input.feedback === 'string' ? input.feedback.trim() : 'Please revise.';
            await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'todo', body: feedbackText});
         } else if (input.action === 'approve') {
            await apiFetch('PATCH', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`, {status: 'done', result: 'Approved'});
@@ -589,8 +589,8 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     // Answering an agent's questions adds the answers to the brief and puts the task back in its queue.
     if(input.action==='answer'){
       if(task.status!=='blocked'||input.version!==(task.version||0))return send(res,409,{error:'These questions changed. Refresh and answer the latest ones.'});
-      const answer=text(input.answer,3000);if(!answer)return send(res,400,{error:'Write an answer first.'});
-      Object.assign(task,{status:'queued',brief:`${task.brief}\n\nQuestions from ${task.assignee}:\n${task.questions}\n\nAnswers:\n${answer}`.trim().slice(0,100000),questions:undefined,askedBy:undefined,error:undefined,runId:null,version:(task.version||0)+1,updatedAt:now()});
+      const answer=text(input.answer);if(!answer)return send(res,400,{error:'Write an answer first.'});
+      Object.assign(task,{status:'queued',brief:`${task.brief}\n\nQuestions from ${task.assignee}:\n${task.questions}\n\nAnswers:\n${answer}`.trim(),questions:undefined,askedBy:undefined,error:undefined,runId:null,version:(task.version||0)+1,updatedAt:now()});
       save();send(res,200,task);setImmediate(kick);return;
     }
     if(input.action!==undefined){
@@ -601,8 +601,8 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
       }
       if(!['approve','revise'].includes(input.action))return send(res,400,{error:'Unknown action.'});
       if(task.status!=='review'||input.version!==(task.version||0))return send(res,409,{error:'This draft changed. Refresh and review the latest version.'});
-      if(input.action==='revise'&&!text(input.feedback,100000))return send(res,400,{error:'Describe the changes needed.'});
-      Object.assign(task,{status:input.action==='approve'?'done':'queued',feedback:input.action==='revise'?text(input.feedback,100000):'',reviewedAt:input.action==='approve'?now():null,runId:null,error:undefined,version:(task.version||0)+1,updatedAt:now()});
+      if(input.action==='revise'&&!text(input.feedback))return send(res,400,{error:'Describe the changes needed.'});
+      Object.assign(task,{status:input.action==='approve'?'done':'queued',feedback:input.action==='revise'?text(input.feedback):'',reviewedAt:input.action==='approve'?now():null,runId:null,error:undefined,version:(task.version||0)+1,updatedAt:now()});
       save();send(res,200,task);setImmediate(kick);return;
     }
     if (input.assignee !== undefined) { change.assignee = text(input.assignee, 80); if (!MEMBERS.has(change.assignee)) return send(res, 400, {error: 'Pick an assignee.'}); if (task.status !== 'done') change.status = 'queued'; }
@@ -612,8 +612,8 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
       if(task.status==='review'&&!change.assignee)return send(res,409,{error:'Approve this draft or request a revision.'});
       if (agents[assignee] && input.status !== 'queued') return send(res, 409, {error: 'This member is connected to an AI agent; it starts and finishes its own tasks.'});
       if (input.status === 'active' && tasks.some(t => t.id !== task.id && t.assignee === assignee && t.status === 'active')) return send(res, 409, {error: 'This member already has an active task.'});
-      if (input.status === 'done' && !text(input.result, 10000)) return send(res, 400, {error: 'Write a result before finishing.'});
-      change.status = input.status; change.result = input.status === 'done' ? text(input.result, 10000) : '';
+      if (input.status === 'done' && !text(input.result)) return send(res, 400, {error: 'Write a result before finishing.'});
+      change.status = input.status; change.result = input.status === 'done' ? text(input.result) : '';
     }
     if(!Object.keys(change).length)return send(res,400,{error:'Provide an assignee, status, or review action.'});
     // Moving a task back to the queue clears a previous agent error so it is tried again.
