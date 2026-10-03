@@ -42,10 +42,8 @@
   };
   let TEAM = [];
   try {
-    const req = new XMLHttpRequest();
-    req.open('GET', '/api/team', false);
-    req.send(null);
-    TEAM = JSON.parse(req.responseText);
+    const res = await fetch('/api/team', { cache: 'no-store' });
+    if (res.ok) TEAM = await res.json();
   } catch(e) {}
   const softShapes=new Map();
   const floors = {}, materials = new Map(), agents = [];

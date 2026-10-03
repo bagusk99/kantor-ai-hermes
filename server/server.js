@@ -119,30 +119,38 @@ try { teamOverrides = JSON.parse(fs.readFileSync('data/team-overrides.json', 'ut
 
 let TEAM_PROFILES = [];
 const MEMBERS = new Set();
+let rebuildPromise = null;
 async function rebuildTeam() {
-  try {
-    const data = await apiFetch('GET', '/api/profiles');
-    if (!data || !data.profiles) return;
-    let c = 0;
-    const newProfiles = [];
-    for (const p of data.profiles) {
-      if (p.name !== 'default') {
-        c++;
-        newProfiles.push({
-          n: p.name,
-          initials: p.name,
-          gender: c % 2 === 0 ? 'female' : 'male',
-          role: 'AI Agent',
-          group: teamOverrides[p.name]?.group || (p.name === 'techlead' ? 'leadership' : 'engineering')
-        });
+  if (rebuildPromise) return rebuildPromise;
+  rebuildPromise = (async () => {
+    try {
+      try { teamOverrides = JSON.parse(fs.readFileSync('data/team-overrides.json', 'utf8')); } catch(e) {}
+      const data = await apiFetch('GET', '/api/profiles');
+      if (!data || !data.profiles) return;
+      let c = 0;
+      const newProfiles = [];
+      for (const p of data.profiles) {
+        if (p.name !== 'default') {
+          c++;
+          newProfiles.push({
+            n: p.name,
+            initials: p.name,
+            gender: c % 2 === 0 ? 'female' : 'male',
+            role: 'AI Agent',
+            group: teamOverrides[p.name]?.group || (p.name === 'techlead' ? 'leadership' : 'engineering')
+          });
+        }
       }
+      TEAM_PROFILES = newProfiles;
+      MEMBERS.clear();
+      TEAM_PROFILES.forEach(p => MEMBERS.add(p.n));
+    } catch(e) {
+      console.error('Failed to load profiles:', e.message);
+    } finally {
+      rebuildPromise = null;
     }
-    TEAM_PROFILES = newProfiles;
-  } catch(e) {
-    console.error('Failed to load profiles:', e.message);
-  }
-  MEMBERS.clear();
-  TEAM_PROFILES.forEach(p => MEMBERS.add(p.n));
+  })();
+  return rebuildPromise;
 }
 // Note: initial call is deferred to server start.
 
@@ -267,6 +275,7 @@ async function api(req, res, url) {
     }
   }
   if (url.pathname === '/api/team' && req.method === 'GET') {
+    await rebuildTeam();
     return send(res, 200, TEAM_PROFILES);
   }
   const teamMatch = url.pathname.match(/^\/api\/team\/(.+)$/);
@@ -376,6 +385,7 @@ async function api(req, res, url) {
   }
 
   if (url.pathname === '/api/agents' && req.method === 'GET') {
+    await rebuildTeam();
     const mems = {};
     for (const p of TEAM_PROFILES) {
       mems[p.n] = { role: p.role, model: 'hermes' };
