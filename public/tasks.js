@@ -203,6 +203,16 @@
     else {
       article.append(node('p', task.by === 'dry-run' ? 'Dry run result, not AI output. Review before use.' : task.by ? `Draft by Claude (${task.by}). Review before use.` : 'Result', 'task-agent'));
       if(task.status==='review')reviewControls(task,article);else article.append(node('div', task.result, 'task-result'));
+      if (task.metadata?.commit || task.metadata?.changed_files?.length) {
+        const meta = node('div', undefined, 'task-meta');
+        meta.style.marginTop = '8px';
+        const parts = [];
+        if (task.metadata.commit) parts.push(`Commit: ${task.metadata.commit}`);
+        if (task.metadata.changed_files?.length) parts.push(`${task.metadata.changed_files.length} file(s) changed`);
+        if (task.metadata.tests_run) parts.push(`${task.metadata.tests_run} tests run`);
+        meta.textContent = parts.join(' · ');
+        article.append(meta);
+      }
     }
     actions.append(action('Archive', () => archiveTask(task)));
     article.append(actions);
@@ -211,26 +221,73 @@
   let expandedTaskId = null;
   let expandedTaskLogs = new Set();
   let expandedTaskHistory = new Set();
+
+  async function loadTaskDetail(id) {
+    if (!server) return;
+    try {
+      const fullTask = await call('GET', `/api/tasks/${id}`);
+      if (fullTask && fullTask.id === id) {
+        const idx = tasks.findIndex(t => t.id === id);
+        if (idx !== -1) {
+          tasks[idx] = { ...tasks[idx], ...fullTask, fullLoaded: true };
+          if (expandedTaskId === id) render();
+        }
+      }
+    } catch(e) {}
+  }
+
   function render() {
     const focused=el('taskList').contains(document.activeElement)&&document.activeElement.tagName==='TEXTAREA'?{id:document.activeElement.id,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd}:null;
     announce();
-    const list = el('taskList'); list.replaceChildren();
+    const list = el('taskList');
+    if (!list) return;
+
+    // Snapshot scroll positions before DOM manipulation
+    const colScrolls = {};
+    for (const col of list.querySelectorAll('.kanban-column')) {
+      const s = col.dataset.status;
+      if (s) colScrolls[s] = col.scrollTop;
+    }
+    const boardScrollLeft = list.scrollLeft;
+    const dialog = el('taskDialog');
+    const dialogScrollTop = dialog ? dialog.scrollTop : 0;
+
+    const logBoxStates = new Map();
+    for (const taskId of expandedTaskLogs) {
+      const box = document.getElementById(`log-box-${taskId}`);
+      if (box) {
+        const isNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 40;
+        logBoxStates.set(taskId, { scrollTop: box.scrollTop, isNearBottom });
+      }
+    }
+
     const done = tasks.filter(t => t.status === 'done').length;
     el('taskCount').textContent = tasks.length - done;
     el('taskSummary').textContent = `${tasks.length} tasks · ${done} done`;
     el('exportTasks').disabled = tasks.length === 0;
 
-    const cols = {
-      queued: node('div', undefined, 'kanban-column'),
-      active: node('div', undefined, 'kanban-column'),
-      blocked: node('div', undefined, 'kanban-column'),
-      review: node('div', undefined, 'kanban-column'),
-      done: node('div', undefined, 'kanban-column')
-    };
-    Object.keys(cols).forEach(s => {
-      cols[s].append(node('h3', states[s], 'kanban-col-title'));
-      list.append(cols[s]);
-    });
+    const cols = {};
+    const existingCols = list.querySelectorAll('.kanban-column');
+    if (existingCols.length === Object.keys(states).length) {
+      existingCols.forEach(col => {
+        const s = col.dataset.status;
+        if (s) {
+          cols[s] = col;
+          while (col.children.length > 1) {
+            col.lastChild.remove();
+          }
+        }
+      });
+    } else {
+      list.replaceChildren();
+      Object.keys(states).forEach(s => {
+        const col = node('div', undefined, 'kanban-column');
+        col.dataset.status = s;
+        col.append(node('h3', states[s], 'kanban-col-title'));
+        cols[s] = col;
+        list.append(col);
+      });
+    }
 
     const visible = tasks.filter(t => (el('taskFilter').value === 'all' || t.status === el('taskFilter').value) &&
       (el('agentFilter').value === 'all' || t.assignee === el('agentFilter').value))
@@ -243,6 +300,9 @@
         if (e.target.tagName === 'BUTTON' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.closest('form') || e.target.tagName === 'SUMMARY' || e.target.closest('details')) return;
         expandedTaskId = expandedTaskId === task.id ? null : task.id;
         render();
+        if (expandedTaskId === task.id && server && (!task.fullLoaded || !task.result || task.result.length <= 200)) {
+          loadTaskDetail(task.id);
+        }
       };
       const timeStr = task.updatedAt ? humanTime(task.updatedAt) : (task.createdAt ? humanTime(task.createdAt) : '');
       const metaText = `${displayName(task.assignee)}${agent ? ` · AI agent` : ''}${timeStr ? ` · ${timeStr}` : ''}`;
@@ -305,7 +365,19 @@
           actions.append(action('Archive', () => archiveTask(task)));
           article.append(actions, form);
         } else {
-          if (task.status === 'done') article.append(node('div', task.result, 'task-result'));
+          if (task.status === 'done') {
+            article.append(node('div', task.result, 'task-result'));
+            if (task.metadata?.commit || task.metadata?.changed_files?.length) {
+              const meta = node('div', undefined, 'task-meta');
+              meta.style.marginTop = '8px';
+              const parts = [];
+              if (task.metadata.commit) parts.push(`Commit: ${task.metadata.commit}`);
+              if (task.metadata.changed_files?.length) parts.push(`${task.metadata.changed_files.length} file(s) changed`);
+              if (task.metadata.tests_run) parts.push(`${task.metadata.tests_run} tests run`);
+              meta.textContent = parts.join(' · ');
+              article.append(meta);
+            }
+          }
           actions.append(action('Archive', () => archiveTask(task)));
           article.append(actions);
         }
@@ -314,9 +386,31 @@
       if(cols[task.status]) cols[task.status].append(card);
     }
     if(focused){const input=document.getElementById(focused.id);if(input){input.focus({preventScroll:true});input.setSelectionRange(focused.start,focused.end);}}
+    
+    // Restore column vertical scroll positions
+    Object.keys(cols).forEach(s => {
+      if (colScrolls[s] !== undefined && cols[s]) {
+        cols[s].scrollTop = colScrolls[s];
+      }
+    });
+
+    // Restore board horizontal scroll
+    if (boardScrollLeft) list.scrollLeft = boardScrollLeft;
+
+    // Restore dialog scroll
+    if (dialog && dialogScrollTop) dialog.scrollTop = dialogScrollTop;
+
+    // Restore worker log scroll
     for (const taskId of expandedTaskLogs) {
       const box = document.getElementById(`log-box-${taskId}`);
-      if (box) box.scrollTop = box.scrollHeight;
+      if (box) {
+        const state = logBoxStates.get(taskId);
+        if (!state || state.isNearBottom) {
+          box.scrollTop = box.scrollHeight;
+        } else {
+          box.scrollTop = state.scrollTop;
+        }
+      }
     }
   }
 
@@ -363,11 +457,43 @@
     render();
     tasks.filter(t => t.status === 'active' && team.some(person => person.n === t.assignee)).forEach(t => changed(t.assignee));
     document.dispatchEvent(new CustomEvent('officetasks:server', {detail: info}));
+    function isOnlyLogUpdate(prevList, nextList) {
+      if (!prevList || !nextList || prevList.length !== nextList.length) return false;
+      for (let i = 0; i < prevList.length; i++) {
+        const a = prevList[i], b = nextList[i];
+        if (a.id !== b.id || a.status !== b.status || a.assignee !== b.assignee || a.title !== b.title || a.error !== b.error) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     setInterval(async () => {
       if(polling||writing)return;polling=true;const ticket=mutation;
       const latest = await call('GET', '/api/tasks').catch(() => null);
       polling=false;if(ticket!==mutation)return;
       if (!latest || JSON.stringify(latest) === JSON.stringify(tasks)) return;
+
+      if (isOnlyLogUpdate(tasks, latest)) {
+        tasks = latest;
+        for (const t of latest) {
+          if (t.status === 'active' && t.workerLog) {
+            const box = document.getElementById(`log-box-${t.id}`);
+            if (box) {
+              const isNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 40;
+              const logText = t.workerLog.trim() || 'Initializing worker...';
+              if (box.textContent !== logText) {
+                box.textContent = logText;
+                if (isNearBottom) {
+                  box.scrollTop = box.scrollHeight;
+                }
+              }
+            }
+          }
+        }
+        return;
+      }
+
       apply(latest);render();
     }, 2500);
   }

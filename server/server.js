@@ -117,6 +117,8 @@ const now = () => new Date().toISOString();
 let teamOverrides = {};
 try { teamOverrides = JSON.parse(fs.readFileSync('data/team-overrides.json', 'utf8')); } catch(e) {}
 
+const taskSummaryCache = new Map();
+
 let TEAM_PROFILES = [];
 const MEMBERS = new Set();
 let rebuildPromise = null;
@@ -406,6 +408,30 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
         }
         
         const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
+        
+        // Pre-fetch uncached done/review tasks so initial board view has full un-truncated summaries
+        const uncachedCompleted = allTasks.filter(t => {
+          const s = statusMap[t.status];
+          return (s === 'done' || s === 'review') && !taskSummaryCache.has(`${board}:${t.id}`);
+        });
+        if (uncachedCompleted.length > 0) {
+          await Promise.all(uncachedCompleted.slice(0, 15).map(async ut => {
+            try {
+              const d = await apiFetch('GET', `/api/plugins/kanban/tasks/${ut.id}?board=${encodeURIComponent(board)}`);
+              if (d && d.task) {
+                const fullSummary = d.task.result || d.task.latest_summary || (d.runs && d.runs[0] && d.runs[0].summary) || '';
+                if (fullSummary) {
+                  taskSummaryCache.set(`${board}:${ut.id}`, {
+                    summary: fullSummary,
+                    runs: d.runs || [],
+                    metadata: d.runs?.[0]?.metadata || null
+                  });
+                }
+              }
+            } catch (e) {}
+          }));
+        }
+
         const mapped = await Promise.all(allTasks.map(async t => {
           const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (t.assignee || '').toLowerCase()) || t.assignee || '';
           const currentStatus = statusMap[t.status] || 'queued';
@@ -421,6 +447,9 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
               // fallback to latest_summary if fetching log fails
             }
           }
+
+          const cached = taskSummaryCache.get(`${board}:${t.id}`);
+          const fullResult = cached?.summary || ((currentStatus === 'review' || currentStatus === 'done') ? (t.result || t.latest_summary || '') : '');
           
           return {
             id: t.id,
@@ -428,13 +457,15 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             brief: t.body || '',
             assignee: matchedAssignee,
             status: currentStatus,
-            result: (currentStatus === 'review' || currentStatus === 'done') ? (t.result || t.latest_summary || '') : '',
+            result: (currentStatus === 'review' || currentStatus === 'done') ? fullResult : '',
             questions: currentStatus === 'blocked' ? (t.latest_summary || '') : undefined,
             createdAt: new Date(t.created_at * 1000).toISOString(),
             error: t.last_failure_error || undefined,
             workerLog,
             workspace: t.workspace_kind || '',
-            absolutePath: t.workspace_path || ''
+            absolutePath: t.workspace_path || '',
+            runs: cached?.runs || undefined,
+            metadata: cached?.metadata || undefined
           };
         }));
         return send(res, 200, mapped);
@@ -520,6 +551,57 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
     save(); kick(); return send(res, 201, tasks);
   }
   const match = url.pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)$/);
+  if (match && req.method === 'GET') {
+    const taskId = match[1];
+    const board = url.searchParams.get('board');
+    if (board) {
+      try {
+        const data = await apiFetch('GET', `/api/plugins/kanban/tasks/${taskId}?board=${encodeURIComponent(board)}`);
+        const hTask = data?.task;
+        if (!hTask) return send(res, 404, {error: 'Task not found'});
+        const statusMap = {todo: 'queued', ready: 'queued', running: 'active', blocked: 'blocked', review: 'review', done: 'done', triage: 'queued', scheduled: 'queued'};
+        const currentStatus = statusMap[hTask.status] || 'queued';
+        const matchedAssignee = Array.from(MEMBERS).find(m => m.toLowerCase() === (hTask.assignee || '').toLowerCase()) || hTask.assignee || '';
+        const fullSummary = hTask.result || hTask.latest_summary || (data.runs && data.runs[0] && data.runs[0].summary) || '';
+        if (fullSummary) {
+          taskSummaryCache.set(`${board}:${taskId}`, {
+            summary: fullSummary,
+            runs: data.runs || [],
+            metadata: data.runs?.[0]?.metadata || null
+          });
+        }
+        let workerLog = hTask.latest_summary || '';
+        if (currentStatus === 'active') {
+          try {
+            const logData = await apiFetch('GET', `/api/plugins/kanban/tasks/${hTask.id}/log?board=${encodeURIComponent(board)}`);
+            if (logData && logData.content) workerLog = logData.content;
+          } catch(e) {}
+        }
+        return send(res, 200, {
+          id: hTask.id,
+          title: hTask.title,
+          brief: hTask.body || '',
+          assignee: matchedAssignee,
+          status: currentStatus,
+          result: (currentStatus === 'review' || currentStatus === 'done') ? fullSummary : '',
+          questions: currentStatus === 'blocked' ? (hTask.latest_summary || '') : undefined,
+          createdAt: new Date(hTask.created_at * 1000).toISOString(),
+          error: hTask.last_failure_error || undefined,
+          workerLog,
+          workspace: hTask.workspace_kind || '',
+          absolutePath: hTask.workspace_path || '',
+          runs: data.runs || [],
+          metadata: data.runs?.[0]?.metadata || null,
+          comments: data.comments || []
+        });
+      } catch (e) {
+        return send(res, 500, {error: e.message});
+      }
+    }
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return send(res, 404, {error: 'Task not found.'});
+    return send(res, 200, task);
+  }
   if (match && req.method === 'PATCH') {
     const input = await readJson(req);
     const board = url.searchParams.get('board');
@@ -573,19 +655,30 @@ if (url.pathname === '/api/tasks' && req.method === 'GET') {
             }
           }
           
+          const fullSummary = (currentStatus === 'review' || currentStatus === 'done') ? (hTask.result || summary || (data.runs && data.runs[0] && data.runs[0].summary) || '') : '';
+          if (fullSummary) {
+            taskSummaryCache.set(`${board}:${taskId}`, {
+              summary: fullSummary,
+              runs: data.runs || [],
+              metadata: data.runs?.[0]?.metadata || null
+            });
+          }
+
           return send(res, 200, {
             id: hTask.id,
             title: hTask.title,
             brief: hTask.body || '',
             assignee: matchedAssignee,
             status: currentStatus,
-            result: (currentStatus === 'review' || currentStatus === 'done') ? (hTask.result || summary || '') : '',
+            result: fullSummary,
             questions: currentStatus === 'blocked' ? summary : undefined,
             createdAt: new Date(hTask.created_at * 1000).toISOString(),
             error: hTask.last_failure_error || undefined,
             workerLog,
             workspace: hTask.workspace_kind || '',
-            absolutePath: hTask.workspace_path || ''
+            absolutePath: hTask.workspace_path || '',
+            runs: data.runs || [],
+            metadata: data.runs?.[0]?.metadata || null
           });
         }
         return send(res, 200, {id: taskId});
