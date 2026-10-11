@@ -64,6 +64,12 @@ Kantor AI relies on the Hermes Dashboard API to manage tasks and boards. Open a 
 hermes dashboard
 ```
 
+To run it in the background instead (it stops when you log out or reboot):
+```sh
+nohup hermes dashboard --no-open > ~/.hermes/logs/dashboard.log 2>&1 &
+```
+Check it with `hermes dashboard --status` and stop it with `hermes dashboard --stop`.
+
 ### 4. Running the Application
 Start the Node.js server to serve the visual office UI:
 ```sh
