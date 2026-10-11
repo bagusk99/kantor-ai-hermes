@@ -7,7 +7,7 @@ const path=require('node:path');
 const PORT=4191,B=`http://127.0.0.1:${PORT}`,NAME='kantor-test';
 const api=(m,p,b)=>fetch(B+p,{method:m,headers:{'content-type':'application/json'},body:b&&JSON.stringify(b)}).then(async r=>({status:r.status,body:await r.json().catch(()=>null)}));
 (async()=>{
- const child=spawn(process.execPath,[path.join(__dirname,'../server/server.js')],{env:{...process.env,PORT:String(PORT),ENV_FILE:'/nonexistent'},stdio:['ignore','pipe','inherit']});
+ const child=spawn(process.execPath,[path.join(__dirname,'../server/server.js')],{env:{...process.env,PORT:String(PORT),ENV_FILE:'/nonexistent',NO_HOOKS:'1'},stdio:['ignore','pipe','inherit']});
  await new Promise((ok,fail)=>{child.stdout.on('data',d=>String(d).includes('Profiles initialized')&&ok());child.on('exit',c=>fail(new Error('server exited '+c)));});
  try{
   assert.equal((await api('POST','/api/profiles',{name:NAME,description:'d1',soul:'s1'})).status,200);

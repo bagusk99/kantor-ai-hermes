@@ -85,6 +85,23 @@ const saveOverrides = () => { fs.mkdirSync('data', {recursive: true}); fs.writeF
 
 const taskSummaryCache = new Map();
 
+// Each profile's worker fires hooks from its own config.yaml (no inheritance from default),
+// so the webhook is added to every profile. claimed comes from the gateway, completed/blocked
+// and tool calls from the worker: each event fires once, from one process.
+const HOOK_URL = `http://${HOST}:${PORT}/api/webhook/hermes`;
+const HOOK_EVENTS = ['kanban_task_claimed', 'kanban_task_completed', 'kanban_task_blocked', 'pre_tool_call', 'post_tool_call'];
+const hooked = new Set();
+async function ensureHook(profile) {
+  if (hooked.has(profile) || process.env.NO_HOOKS) return;
+  const q = `?profile=${encodeURIComponent(profile)}`;
+  const {yaml = ''} = await apiFetch('GET', `/api/config/raw${q}`) || {};
+  // ponytail: text check, not a YAML parse; a profile with its own hooks.outbound is left alone.
+  if (yaml.includes(HOOK_URL)) {}
+  else if (/^\s+outbound:/m.test(yaml)) console.warn(`Profile ${profile} has its own hooks.outbound; add ${HOOK_URL} there for live events.`);
+  else await apiFetch('PUT', `/api/config${q}`, {config: {hooks: {outbound: [{name: 'kantor-ai-sync', url: HOOK_URL, events: HOOK_EVENTS}]}}});
+  hooked.add(profile);
+}
+
 let TEAM_PROFILES = [];
 const MEMBERS = new Set();
 let rebuildPromise = null;
@@ -95,6 +112,7 @@ async function rebuildTeam() {
       try { teamOverrides = JSON.parse(fs.readFileSync('data/team-overrides.json', 'utf8')); } catch(e) {}
       const data = await apiFetch('GET', '/api/profiles');
       if (!data || !data.profiles) return;
+      await Promise.all(data.profiles.map(p => ensureHook(p.name).catch(e => console.error(`Webhook for ${p.name}:`, e.message))));
       let c = 0;
       const newProfiles = [];
       for (const p of data.profiles) {

@@ -43,8 +43,8 @@ hermes profile create frontend_dev
 
 > **Note:** a new profile uses the default profile's model. Set the model you want for it in the Hermes dashboard.
 
-### 2. Configure Webhook (Recommended)
-To allow the office UI to react in real-time when an agent uses a tool, claims a task, or blocks a task, add this webhook configuration to your `~/.hermes/config.yaml` and restart the gateway (Hermes warns that the URL is plain `http://`; that is fine on localhost):
+### 2. Webhook (automatic)
+So the office reacts in real time when an agent claims a task, uses a tool, finishes or gets blocked, the server adds this webhook to every Hermes profile's `config.yaml` through the dashboard API (each profile's worker reads only its own config). Restart the gateway once after the first start so the default profile picks it up. Hermes warns that the URL is plain `http://`; that is fine on localhost. A profile that already has its own `hooks.outbound` is left alone, with a warning in the server log; add the entry there yourself:
 ```yaml
 hooks:
   outbound:
