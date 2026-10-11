@@ -41,7 +41,7 @@ To add AI agents, you can create them directly from the web UI using the **+ New
 hermes profile create frontend_dev
 ```
 
-> **Note:** a new profile starts without provider credentials (its own `.env`), so its Kanban worker fails with `provider rejected this profile's credentials` until a key is set. Give the profile its API key, or create it as a copy of a working profile (`hermes profile create frontend_dev --clone`).
+> **Note:** a new profile uses the default profile's model. Set the model you want for it in the Hermes dashboard.
 
 ### 2. Configure Webhook (Recommended)
 To allow the office UI to react in real-time when an agent uses a tool, claims a task, or blocks a task, add this webhook configuration to your `~/.hermes/config.yaml` and restart the gateway (Hermes warns that the URL is plain `http://`; that is fine on localhost):
