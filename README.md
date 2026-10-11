@@ -20,15 +20,14 @@ Team members shown in the office are actual Hermes AI profiles on your system. A
 
 ### Prerequisites
 - Node.js 22+
-- Hermes CLI installed on your system.
+- Hermes installed, with the dashboard running (`hermes dashboard`, port 9119).
 
 ### 1. Hermes Setup
-The integration with Hermes uses a combination of methods:
-1. **CLI Commands**: Used for profile management (`hermes profile create`, `delete`, `rename`, etc.).
-2. **Dashboard API (HTTP)**: Communicates with the Hermes Dashboard (default `http://127.0.0.1:9119`) for Kanban operations (boards, tasks). It automatically scrapes the session token from the dashboard.
-3. **Webhooks**: Receives real-time events from Hermes via `POST /api/webhook/hermes`.
+Kantor AI talks to Hermes in two directions:
+1. **Hermes Dashboard API (port 9119)**: profiles (`/api/profiles`: list, create, rename, delete, description, SOUL) and the Kanban board (`/api/plugins/kanban/*`: boards, tasks, logs, comments). The server reads the dashboard's session token from its page automatically.
+2. **Outbound webhooks**: Hermes posts events to `POST /api/webhook/hermes`; the server relays them to the browser over Server-Sent Events (`GET /api/events`) so the office updates without waiting for the next poll.
 
-**That is why having the Hermes CLI installed, the Hermes Dashboard running (`hermes dashboard`), and the Hermes Gateway running (`hermes gateway start`) is mandatory.** For more info, please read the official Hermes documentation.
+**The Hermes Dashboard (`hermes dashboard`) and Hermes Gateway (`hermes gateway start`, which runs the Kanban workers) must be running.** No Hermes CLI calls or Anthropic API key are needed.
 
 Initialize a Kanban board on your machine if you haven't already:
 ```sh
@@ -42,8 +41,10 @@ To add AI agents, you can create them directly from the web UI using the **+ New
 hermes profile create frontend_dev
 ```
 
+> **Note:** a new profile starts without provider credentials (its own `.env`), so its Kanban worker fails with `provider rejected this profile's credentials` until a key is set. Give the profile its API key, or create it as a copy of a working profile (`hermes profile create frontend_dev --clone`).
+
 ### 2. Configure Webhook (Recommended)
-To allow the office UI to react in real-time when an agent uses a tool, claims a task, or blocks a task, add this webhook configuration to your `~/.hermes/config.yaml`:
+To allow the office UI to react in real-time when an agent uses a tool, claims a task, or blocks a task, add this webhook configuration to your `~/.hermes/config.yaml` and restart the gateway (Hermes warns that the URL is plain `http://`; that is fine on localhost):
 ```yaml
 hooks:
   outbound:
@@ -79,17 +80,13 @@ hermes gateway start
 
 *(The gateway will run in the background to process the tasks, while this visual office UI updates automatically as they work).*
 
-> **WIP Notice:** We are currently in the process of slowly migrating the architecture to rely entirely on the full **Hermes Gateway**. In the future, this project will no longer use CLI commands or depend on the Hermes Dashboard API (port 9119) for integrations.
-
 ## Task Lifecycle & Management
 - Click **Tasks** at the top of the UI or select a character to assign tasks.
 - The AI moves tasks through stages: **Queued → In progress → Review / Needs decision / Done**. 
 - If the agent is blocked or needs a human decision, you can reply directly via the UI using the **Your answer** form, or bypass the questions entirely by clicking **Mark done** on the task card.
 
-## Legacy Mode: Claude API (Not Recommended)
-While this project was originally built for direct integration with the Anthropic API (Claude), **it has now fully migrated to Hermes**. 
-
-You *can* still use the legacy local-only mode by selecting "Local Only (No Hermes)" in the board dropdown and providing an `ANTHROPIC_API_KEY` in the `.env` file. However, **this mode is not recommended** as active development and new features are focused entirely on the Hermes integration.
+## Tests
+`node tests/hermes.cjs` checks profile CRUD, a Kanban task and the webhook → SSE relay against a running dashboard. It creates and deletes a throwaway `kantor-test` profile.
 
 ---
 

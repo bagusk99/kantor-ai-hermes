@@ -1476,9 +1476,9 @@
     const close=document.createElement('button');close.id='iClose';close.textContent='×';close.setAttribute('aria-label','Close details');close.onclick=()=>selectAgent(null);
     const heading=document.createElement('h2');heading.textContent=agent.initials;
     const role=document.createElement('p');role.className='role';role.textContent=agent.role;
-    // Members connected to an AI agent on the server say so; everyone else stays a labelled simulation.
+    // Members backed by a Hermes profile show the profile's model.
     const ai=window.officeTasks.agentFor(agent.n);
-    if(ai){const badge=document.createElement('span');badge.className='ai-badge';badge.textContent=ai.mode==='claude'?`AI agent · ${ai.model.replace(/^claude-/,'').replace(/-\d{8}$/,'').replace(/-(\d+)-(\d+)$/,' $1.$2').replace(/^\w/,c=>c.toUpperCase())}`:'AI agent · dry run';role.append(badge);}
+    if(ai){const badge=document.createElement('span');badge.className='ai-badge';badge.textContent=`AI agent · ${ai.model}`;role.append(badge);}
     const list=document.createElement('dl');
     
     const dtGroup=document.createElement('dt');dtGroup.textContent='Desk group';

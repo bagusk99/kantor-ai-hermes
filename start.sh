@@ -3,19 +3,10 @@
 echo "🚀 Menjalankan Backend Server Kantor AI..."
 echo "============================================="
 
-# Cek apakah file .env ada
-if [ ! -f .env ]; then
-    echo "⚠️  Peringatan: File .env tidak ditemukan!"
-    echo "💡 Membuat .env dari .env.example (Dry-run mode aktif)..."
-    cp .env.example .env
-fi
-
-# Cek apakah ANTHROPIC_API_KEY sudah diisi
-if grep -q "ANTHROPIC_API_KEY=your_anthropic_api_key_here" .env; then
-    echo "⚠️  Perhatian: ANTHROPIC_API_KEY belum disetel di .env!"
-    echo "   Server akan berjalan dalam mode DRY RUN (tanpa memanggil API AI)."
-else
-    echo "✅ ANTHROPIC_API_KEY terdeteksi (AI aktif jika key valid)."
+# Kantor AI butuh Hermes dashboard (port 9119) untuk profile dan kanban.
+if ! curl -s -o /dev/null -m 2 http://127.0.0.1:9119/; then
+    echo "⚠️  Hermes dashboard tidak terdeteksi di http://127.0.0.1:9119"
+    echo "   Jalankan dulu: hermes dashboard"
 fi
 
 echo "============================================="

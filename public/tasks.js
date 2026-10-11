@@ -1,17 +1,17 @@
 (() => {
-  const storageKey = 'kantor-ai.tasks.v1';
   const states = {queued: 'Queued', active: 'In progress', blocked: 'Needs decision', review: 'Needs review', done: 'Done'};
   const el = id => document.getElementById(id);
   let tasks = [], team = [], changed, locate;
-  let storageHealthy = true;
   let mutation=0,polling=false,writing=0;
+  // What each agent is doing right now, from Hermes tool-call events.
+  const activity = new Map();
   const drafts=new Map();
   const draftKey=(task,kind)=>`${kind}:${task.id}:${kind==='result'?'result':(task.version||0)}`;
   function draftRead(key){if(drafts.has(key))return drafts.get(key);try{return sessionStorage.getItem('kantor-draft:'+key)||'';}catch{return '';}}
   function draftWrite(key,value){drafts.set(key,value);try{sessionStorage.setItem('kantor-draft:'+key,value);}catch{feedback('Draft is kept in this tab only; browser storage is unavailable.');}}
   function draftClear(key){drafts.delete(key);try{sessionStorage.removeItem('kantor-draft:'+key);}catch{}}
 
-  // With the server running, tasks live there and some members are AI agents; without it, tasks stay in this browser.
+  // Tasks live on the Hermes kanban board; every member is a Hermes profile.
   let server = null;
   let loadedBoards = [];
   const displayName = name => team.find(person => person.n === name)?.initials || name;
@@ -33,16 +33,6 @@
   }
 
   function feedback(message) { el('taskFeedback').textContent = message; }
-  function persist(next) {
-    if (!storageHealthy) {
-      feedback('Saved data cannot be read. Changes are blocked so the old data is not overwritten.');
-      return false;
-    }
-    try { localStorage.setItem(storageKey, JSON.stringify(next)); }
-    catch { feedback('Could not save. Check browser storage; the change was not applied.'); return false; }
-    tasks = next;
-    return true;
-  }
   async function call(method, path, body) {
     const write=method!=='GET';if(write){mutation++;writing++;}
     try{
@@ -68,13 +58,6 @@
       if (old && old.assignee !== task.assignee) changed(old.assignee);
     }
   }
-  function validTask(task) {
-    return task && typeof task.id === 'string' && typeof task.title === 'string' && task.title.trim() &&
-      task.title.length <= 160 && typeof task.assignee === 'string' && task.assignee.trim() &&
-      Object.hasOwn(states, task.status) && typeof task.brief === 'string' &&
-      typeof task.result === 'string' &&
-      (!['review','done'].includes(task.status) || task.result.trim()) && typeof task.createdAt === 'string';
-  }
   function node(tag, text, className) {
     const item = document.createElement(tag);
     if (text !== undefined) item.textContent = text;
@@ -89,12 +72,8 @@
   async function archiveTask(task) {
     if(!confirm('Archive this task?'))return;
     try {
-      if (server) {
-        await call('PATCH', `/api/tasks/${task.id}`, {action: 'archive'});
-      }
-      const next = tasks.filter(t => t.id !== task.id);
-      if (!server && !persist(next)) return;
-      if (server) tasks = next;
+      await call('PATCH', `/api/tasks/${task.id}`, {action: 'archive'});
+      tasks = tasks.filter(t => t.id !== task.id);
       expandedTaskId = null;
       render();
       feedback('Task archived.');
@@ -108,37 +87,21 @@
       feedback(`${displayName(task.assignee)} already has an active task. Move it back to the queue or finish it first.`);
       return;
     }
-    if (server) {
-      try { const saved = await call('PATCH', `/api/tasks/${id}`, {status, result}); apply(tasks.map(t => t.id === id ? saved : t)); }
-      catch (error) { feedback(error.message); return; }
-    } else {
-      const next = tasks.map(t => t.id === id ? {...t, status, result, updatedAt: new Date().toISOString()} : t);
-      if (!persist(next)) return;
-      changed(task.assignee, status, task.title);
-    }
+    try { const saved = await call('PATCH', `/api/tasks/${id}`, {status, result}); apply(tasks.map(t => t.id === id ? saved : t)); }
+    catch (error) { feedback(error.message); return; }
     if(status==='done')draftClear(draftKey(task,'result'));
     render(); feedback(`Task status: ${states[status]}.`);
     el('taskFilter').focus();
   }
   async function reassign(id, assignee) {
     if (!team.some(person => person.n === assignee)) return;
-    if (server) {
-      try { const saved = await call('PATCH', `/api/tasks/${id}`, {assignee}); apply(tasks.map(t => t.id === id ? saved : t)); }
-      catch (error) { feedback(error.message); return; }
-    } else {
-      const next = tasks.map(task => task.id === id ? {...task, assignee, status: task.status === 'done' ? 'done' : 'queued'} : task);
-      if (!persist(next)) return;
-    }
+    try { const saved = await call('PATCH', `/api/tasks/${id}`, {assignee}); apply(tasks.map(t => t.id === id ? saved : t)); }
+    catch (error) { feedback(error.message); return; }
     render(); feedback(`Task moved to ${displayName(assignee)}.`);
   }
   async function reviewTask(task,action,comments=''){
     try{
-      if(server){const saved=await call('PATCH',`/api/tasks/${task.id}`,{action,feedback:comments,version:task.version||0});apply(tasks.map(t=>t.id===task.id?saved:t));}
-      else{
-        const next=tasks.map(t=>t.id===task.id?{...t,status:action==='approve'?'done':'queued',feedback:comments,version:(t.version||0)+1,updatedAt:new Date().toISOString()}:t);
-        if(!persist(next))return;
-        changed(task.assignee,action==='approve'?'done':'queued',task.title);
-      }
+      const saved=await call('PATCH',`/api/tasks/${task.id}`,{action,feedback:comments,version:task.version||0});apply(tasks.map(t=>t.id===task.id?saved:t));
       draftClear(draftKey(task,'review'));render();feedback(action==='approve'?'Draft approved.':'Revision requested. The previous draft stays in history.');
     }catch(error){feedback(error.message);}
   }
@@ -178,7 +141,7 @@
     else if (task.status === 'active') {
       const logText = task.workerLog ? task.workerLog.trim() : '';
       const details = node('details');
-      const summary = node('summary', agent.mode === 'claude' ? 'The AI agent is working on this…' : 'Dry run in progress…');
+      const summary = node('summary', activity.get(task.assignee) || 'The AI agent is working on this…');
       summary.className = 'task-agent task-agent-summary';
       const logBox = node('div', logText ? logText : 'Initializing worker...', 'task-worker-log');
       logBox.id = `log-box-${task.id}`;
@@ -201,7 +164,7 @@
       article.append(details);
     }
     else {
-      article.append(node('p', task.by === 'dry-run' ? 'Dry run result, not AI output. Review before use.' : task.by ? `Draft by Claude (${task.by}). Review before use.` : 'Result', 'task-agent'));
+      article.append(node('p', task.status === 'review' ? `Draft by ${displayName(task.assignee)} (${agent.model}). Review before use.` : 'Result', 'task-agent'));
       if(task.status==='review')reviewControls(task,article);else article.append(node('div', task.result, 'task-result'));
       if (task.metadata?.commit || task.metadata?.changed_files?.length) {
         const meta = node('div', undefined, 'task-meta');
@@ -428,7 +391,7 @@
         loadedBoards = boards;
         const select = document.getElementById('boardSelect');
         if (select) {
-          select.innerHTML = '<option value="">Local Only (No Hermes)</option>';
+          select.replaceChildren();
           boards.forEach(b => {
             const option = document.createElement('option');
             option.value = b.slug;
@@ -441,22 +404,21 @@
         }
       }
     } catch { return; }
-    let list = await call('GET', '/api/tasks').catch(() => null);
+    const list = await call('GET', '/api/tasks').catch(() => null);
     if (!list) return;
-    // First visit with the server: carry over tasks this browser saved before, if the server has none.
-    if (!list.length && storageHealthy && tasks.length) {
-      list = await call('POST', '/api/tasks/import', tasks).then(imported => { feedback(`${imported.length} tasks from this browser moved to the server.`); return imported; }).catch(() => list);
-    }
+    const first = !server;
     server = info;
     tasks = list;
     const names = Object.keys(info.members).map(displayName).join(', ');
-    el('taskNote').textContent = info.mode === 'claude'
-      ? `${names} works with Claude and submits drafts for your review. Everyone else is a simulation; change their status by hand.`
-      : `${names} is connected in dry-run mode (no API key yet), so results are placeholders. Everyone else is a simulation; change their status by hand.`;
-    el('saveNote').textContent = 'Saved on the Kantor AI server. Export tasks to keep a copy.';
+    el('taskNote').textContent = names
+      ? `${names} work as Hermes agents and submit drafts for your review.`
+      : 'No Hermes profiles yet. Add one with + New profile.';
+    el('saveNote').textContent = 'Saved on the Hermes kanban board. Export tasks to keep a copy.';
     render();
     tasks.filter(t => t.status === 'active' && team.some(person => person.n === t.assignee)).forEach(t => changed(t.assignee));
     document.dispatchEvent(new CustomEvent('officetasks:server', {detail: info}));
+    // connect() runs again after board edits; the poll and the event stream start once.
+    if (!first) return;
     function isOnlyLogUpdate(prevList, nextList) {
       if (!prevList || !nextList || prevList.length !== nextList.length) return false;
       for (let i = 0; i < prevList.length; i++) {
@@ -468,7 +430,7 @@
       return true;
     }
 
-    setInterval(async () => {
+    async function refresh() {
       if(polling||writing)return;polling=true;const ticket=mutation;
       const latest = await call('GET', '/api/tasks').catch(() => null);
       polling=false;if(ticket!==mutation)return;
@@ -495,10 +457,20 @@
       }
 
       apply(latest);render();
-    }, 2500);
+    }
+    setInterval(refresh, 2500);
+    // Hermes webhook events, relayed by the server: refresh at once instead of waiting for the next poll.
+    new EventSource('/api/events').onmessage = message => {
+      const event = JSON.parse(message.data);
+      if (event.event === 'pre_tool_call' && event.profile && event.tool) activity.set(event.profile, `Using ${event.tool}…`);
+      if (event.event.startsWith('kanban_task_')) {
+        if (event.event !== 'kanban_task_claimed') activity.delete(event.profile);
+        refresh();
+      }
+    };
   }
   window.officeTasks = {
-    activeFor: name => tasks.find(t => t.assignee === name && t.status === 'active'),
+    activeFor: name => { const task = tasks.find(t => t.assignee === name && t.status === 'active'); return task && activity.has(name) ? {...task, activity_message: activity.get(name)} : task; },
     list: () => tasks.map(t => ({...t})),
     agentFor,
     open(name, status = 'all') {
@@ -527,18 +499,6 @@
         for (const id of ['taskAssignee', 'agentFilter']) {
           const option = node('option', `${displayName(person.n)} · ${person.role}`); option.value = person.n; el(id).append(option);
         }
-      }
-      try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (!Array.isArray(parsed) || !parsed.every(validTask) || new Set(parsed.map(t => t.id)).size !== parsed.length ||
-            new Set(parsed.filter(t => t.status === 'active').map(t => t.assignee)).size !== parsed.filter(t => t.status === 'active').length) throw new Error('Invalid task data');
-          tasks = parsed;
-        }
-      } catch { storageHealthy = false; feedback('Task data cannot be read. The old data is kept; changes are blocked.'); }
-      for (const name of new Set(tasks.filter(task => !team.some(person => person.n === task.assignee)).map(task => task.assignee))) {
-        const option = node('option', `${name} (old prototype)`); option.value = name; el('agentFilter').append(option);
       }
       el('closeTasks').onclick = () => el('taskDialog').close();
       el('taskFilter').onchange = render; el('agentFilter').onchange = render;
@@ -600,7 +560,7 @@
            const res = await fetch(`/api/boards/${encodeURIComponent(board.slug)}`, { method: 'DELETE' }).then(r => r.json());
            if (res && res.error) throw new Error(res.error);
            await connect();
-           if (bs) { bs.value = ''; bs.onchange(); }
+           if (bs) bs.onchange();
         } catch (e) {
            alert('Failed to delete board: ' + e.message);
         }
@@ -683,25 +643,11 @@
         const assignee = el('taskAssignee').value;
         const workspace = el('taskWorkspace').value;
         const absolutePath = el('taskAbsPath').value.trim();
-        const board = document.getElementById('boardSelect')?.value;
-        
-        if (!board && !assignee) {
-          el('taskAssignee').setCustomValidity('Local tasks require an assignee.');
-          el('taskAssignee').reportValidity();
-          return;
-        } else {
-          el('taskAssignee').setCustomValidity('');
-        }
-        
-        const draft = {title, assignee, workspace, absolutePath, brief: el('taskBrief').value.trim(), status: 'queued', result: ''};
+        if (!server) { feedback('Hermes dashboard is not reachable. Start it with `hermes dashboard`, then reload.'); return; }
+        const draft = {title, assignee, workspace, absolutePath, brief: el('taskBrief').value.trim()};
         let task;
-        if (server) {
-          try { task = await call('POST', '/api/tasks', draft); tasks = [task, ...tasks]; if (task.status !== 'queued') changed(task.assignee, task.status, task.title); }
-          catch (error) { feedback(error.message); return; }
-        } else {
-          task = {id: crypto.randomUUID(), ...draft, createdAt: new Date().toISOString()};
-          if (!persist([task, ...tasks])) return;
-        }
+        try { task = await call('POST', '/api/tasks', draft); tasks = [task, ...tasks]; if (task.status !== 'queued') changed(task.assignee, task.status, task.title); }
+        catch (error) { feedback(error.message); return; }
         el('taskTitle').value = ''; el('taskBrief').value = '';
         el('taskAbsPath').value = '';
         el('taskWorkspace').value = 'scratch';
