@@ -5,6 +5,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const {execFile} = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const HERMES_URL = 'http://127.0.0.1:9119';
@@ -186,6 +187,21 @@ const listeners = new Set();
 const broadcast = data => { const msg = `data: ${JSON.stringify(data)}\n\n`; for (const res of listeners) res.write(msg); };
 setInterval(() => { for (const res of listeners) res.write(':\n\n'); }, 25000).unref();
 
+// Native OS notification. Fire-and-forget: a missing notifier (no notify-send, etc.) is ignored.
+function notify(title, body) {
+  const q = s => JSON.stringify(String(s));
+  const cmd = {
+    linux: ['notify-send', ['-a', 'Kantor AI', title, body]],
+    darwin: ['osascript', ['-e', `display notification ${q(body)} with title ${q(title)}`]],
+    win32: ['powershell', ['-NoProfile', '-Command',
+      `[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]>$null;` +
+      `$x=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(1);` +
+      `$t=$x.GetElementsByTagName('text');$t[0].InnerText=$env:N_TITLE;$t[1].InnerText=$env:N_BODY;` +
+      `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Kantor AI').Show([Windows.UI.Notifications.ToastNotification]::new($x))`]]
+  }[process.platform];
+  if (cmd) execFile(cmd[0], cmd[1], {env: {...process.env, N_TITLE: title, N_BODY: body}}, () => {});
+}
+
 // ---- HTTP ----
 function send(res, status, body) {
   res.writeHead(status, {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'});
@@ -362,9 +378,12 @@ async function api(req, res, url) {
     const payload = await readJson(req);
     if (!payload || !payload.hook_event_name) return send(res, 400, {error: 'Invalid webhook payload'});
     const extra = payload.extra || {};
+    const profile = memberOf(extra.assignee || extra.profile_name || payload.profile);
+    const done = {kanban_task_completed: 'finished a task', kanban_task_blocked: 'needs your decision'}[payload.hook_event_name];
+    if (done) notify(`${profile || 'Agent'} ${done}`, extra.summary || extra.reason || extra.task_id || '');
     broadcast({
       event: payload.hook_event_name,
-      profile: memberOf(extra.assignee || extra.profile_name || payload.profile),
+      profile,
       tool: payload.tool_name || undefined,
       taskId: extra.task_id || undefined,
       board: extra.board || undefined,
