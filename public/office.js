@@ -68,6 +68,10 @@
     if (!materials.has(color)) materials.set(color, new THREE.MeshStandardMaterial({color:linear(color), roughness:.78, metalness:0}));
     return materials.get(color);
   }
+  // Regalia for the orchestrator (the default Hermes profile): royal purple and polished gold.
+  const GOLD=0xd9a520,ROYAL=0x5a1f7a;
+  const goldMaterial=new THREE.MeshStandardMaterial({color:linear(GOLD),metalness:.55,roughness:.28,emissive:linear(0x5c3d00)});
+  const glowMaterial=new THREE.MeshBasicMaterial({color:linear(0xffd76a),transparent:true,opacity:.5,depthWrite:false,side:THREE.DoubleSide});
   function mesh(geometry, color, x, y, z, parent = root, edges = true) {
     const glass = color === 'glass' || color === 'roofglass';
     const m = new THREE.Mesh(geometry, color === 'roofglass' ? roofGlassMaterial : glass ? glassMaterial : material(color));
@@ -309,7 +313,15 @@
     people.forEach((person,index)=>{
       const side=people.length===2?1:(index<cols?-1:1),f=-side;
       const x=group.x+(index%cols===0?-1.65:1.65),z=group.z+side*2.05;
-      chair(x,z,f,group.color);screen(x,group.z+side*.38,f,key==='engineering');
+      chair(x,z,f,person.ruler?ROYAL:group.color);screen(x,group.z+side*.38,f,key==='engineering');
+      if(person.ruler){
+        // Throne back: a tall gilded panel behind the chair, crowned with three gold finials.
+        // Walkable so the tall panel does not read as a wall that blocks the way into the seat.
+        const throne=new THREE.Group();throne.userData.walkable=true;root.add(throne);
+        mesh(softBox(1.1,1.75,.14),GOLD,x,1.25,z-f*.52,throne,false).material=goldMaterial;
+        mesh(softBox(.86,1.35,.06),ROYAL,x,1.2,z-f*.44,throne,false);
+        for(const dx of [-.5,0,.5])oval(.17,.17,.17,GOLD,x+dx,dx?2.17:2.27,z-f*.52,throne).material=goldMaterial;
+      }
       const notebook=mesh(softBox(.35,.04,.45),0xe6dbc4,x-.8,.99,group.z+side*.65,root,false);notebook.rotation.y=.12;
       plant(x+.95,group.z+side*.1,.24,.97);
       desks[person.n]=seat(x,z,f,3,group.x<0?-10.5:key==='marketing'?9:10);
@@ -810,35 +822,75 @@
     part(softBox(width,length,width*.92),color,0,-length/2,0,pivot);
     return pivot;
   }
-  function buildFigure(shirt,gender,index){
+  // Hair: every style starts from a cap that wraps the skull past the temples (no bald sides), then adds
+  // its own pieces. Styles and colours are picked from a hash of the name, so a person keeps their look.
+  const HAIR_COLORS=[0x2f2925,0x1c1816,0x4a3426,0x6b4a33,0x8a5a3b,0xa9855a,0x8d8a86,0x8e3b26];
+  const HAIR_BALL=new THREE.SphereGeometry(1,16,12),HAIR_CAP=new THREE.SphereGeometry(1,24,16,0,Math.PI*2,0,Math.PI*.6);
+  const hairMaterials=new Map(),curtains=new Map();
+  function hairPiece(geometry,color,x,y,z,parent,scale){
+    const m=part(geometry,color,x,y,z,parent);m.scale.set(...scale);
+    if(!hairMaterials.has(color))hairMaterials.set(color,new THREE.MeshStandardMaterial({color:linear(color),roughness:.9,metalness:0,side:THREE.DoubleSide}));
+    m.material=hairMaterials.get(color);return m;
+  }
+  const cap=(h,c,s=1)=>{hairPiece(HAIR_CAP,c,0,.07,-.02,h,[.375*s,.37*s,.345*s]).rotation.x=-.6;};
+  // An open tube around the back and sides of the head, hanging `length` down from the temples.
+  function curtain(h,c,length,flare){
+    const key=length+'/'+flare;
+    if(!curtains.has(key))curtains.set(key,new THREE.CylinderGeometry(1,flare,length,24,1,true,1.1,Math.PI*2-2.2).translate(0,-length/2,0));
+    hairPiece(curtains.get(key),c,0,.12,-.01,h,[.37,1,.345]);
+  }
+  const fringe=(h,c)=>hairPiece(HAIR_BALL,c,0,.24,.2,h,[.3,.11,.13]);
+  // Each style returns true when it covers the ears.
+  const HAIR_STYLES={
+    crop:(h,c)=>cap(h,c),
+    buzz:(h,c)=>cap(h,new THREE.Color(c).lerp(new THREE.Color(SKIN),.35).getHex(),.97),
+    sidepart:(h,c)=>{cap(h,c);hairPiece(HAIR_BALL,c,-.06,.37,.12,h,[.27,.09,.2]).rotation.z=.25;},
+    quiff:(h,c)=>{cap(h,c);hairPiece(HAIR_BALL,c,0,.38,.16,h,[.2,.12,.17]).rotation.x=-.5;},
+    curly:(h,c)=>{cap(h,c);for(let i=0;i<9;i++){const a=i/9*Math.PI*2;hairPiece(HAIR_BALL,c,Math.cos(a)*.25,.33,Math.sin(a)*.22-.03,h,[.1,.1,.1]);}hairPiece(HAIR_BALL,c,0,.43,-.02,h,[.12,.1,.12]);},
+    bob:(h,c)=>{cap(h,c);curtain(h,c,.42,1.1);fringe(h,c);return true;},
+    long:(h,c)=>{cap(h,c);curtain(h,c,.7,1.05);return true;},
+    ponytail:(h,c)=>{
+      cap(h,c);hairPiece(HAIR_BALL,c,0,.2,-.35,h,[.09,.09,.08]);
+      hairPiece(HAIR_BALL,c,0,.02,-.45,h,[.1,.22,.09]).rotation.x=.35;
+      hairPiece(HAIR_BALL,c,0,-.2,-.5,h,[.07,.14,.07]).rotation.x=.2;
+    },
+    bun:(h,c)=>{cap(h,c);hairPiece(HAIR_BALL,c,0,.36,-.22,h,[.15,.14,.14]);},
+    fringe:(h,c)=>{cap(h,c);curtain(h,c,.55,1.08);fringe(h,c);return true;}
+  };
+  const HAIR_BY_GENDER={female:['bob','long','ponytail','bun','fringe'],male:['crop','sidepart','quiff','curly','buzz']};
+  const hash=s=>[...String(s)].reduce((h,ch)=>Math.imul(h^ch.charCodeAt(0),16777619)>>>0,2166136261);
+  // `pick` may name a style and colour (from data/team-overrides.json); otherwise the seed decides.
+  function hairFor(seed,gender,pick={}){
+    const h=hash(seed),styles=HAIR_BY_GENDER[gender]||HAIR_BY_GENDER.male;
+    return {
+      style:HAIR_STYLES[pick.hair]?pick.hair:styles[h%styles.length],
+      color:pick.hairColor?parseInt(String(pick.hairColor).replace('#',''),16):HAIR_COLORS[(h>>>8)%HAIR_COLORS.length]
+    };
+  }
+  function setHair(rig,{style,color}){
+    rig.hair.clear();rig.hairStyle=style;rig.hairColor=color;
+    const covered=HAIR_STYLES[style](rig.hair,color);
+    rig.ears.forEach(ear=>ear.visible=!covered);
+  }
+  function buildFigure(shirt,gender,hair){
     const figure=new THREE.Group();figure.scale.setScalar(FIGURE_SCALE);
     const body=new THREE.Group();figure.add(body);
     const hips=new THREE.Group();hips.position.y=.88;body.add(hips);
     part(softBox(.55,.17,.35),TROUSERS,0,.015,0,hips);
-    oval(.64,.7,.43,shirt,0,.38,0,hips);
+    part(softBox(.62,.7,.4),shirt,0,.38,0,hips);
     part(softBox(.13,.14,.13),SKIN,0,.75,0,hips);
     const head=new THREE.Group();head.position.y=1.02;hips.add(head);
     oval(.68,.7,.61,SKIN,0,.03,0,head);
-    oval(.72,.38,.65,HAIR,0,.25,-.055,head);
-    for(let i=0;i<5;i++){
-      const lock=oval(.23,.27,.23,HAIR,-.27+i*.13,.27+Math.sin(i)*.035,.18,head);lock.rotation.z=-.3+i*.1;
-    }
+    const ears=[];
     for(const side of [-1,1]){
-      oval(.12,.19,.13,SKIN,side*.33,0,0,head);
+      ears.push(oval(.12,.19,.13,SKIN,side*.33,0,0,head));
       oval(.058,.088,.03,HAIR,side*.13,.025,.293,head);
       oval(.016,.023,.012,0xffffff,side*.13-.01,.043,.31,head);
       oval(.1,.04,.016,0xd59a80,side*.19,-.09,.275,head);
     }
     oval(.085,.065,.08,SKIN,0,-.04,.3,head);
     oval(.09,.026,.02,0x895d4c,0,-.15,.286,head);
-    if(gender==='female'){
-      oval(.65,.68,.27,HAIR,0,-.13,-.25,head);
-      for(const side of [-1,1])oval(.18,.55,.28,HAIR,side*.29,-.12,-.06,head);
-      if(index%2===0)oval(.32,.33,.32,HAIR,.19,.4,-.23,head);
-    }else{
-      oval(.62,.35,.22,HAIR,0,.11,-.27,head);
-      oval(.35,.23,.35,HAIR,.14,.39,-.03,head);
-    }
+    const rig={head,ears,gender,hair:new THREE.Group()};head.add(rig.hair);setHair(rig,hair);
     const legs=[-1,1].map(sx=>{
       const thigh=joint(hips,sx*.155,-.03,0,.38,.25,TROUSERS);
       const knee=joint(thigh,0,-.38,0,.39,.24,TROUSERS);
@@ -854,18 +906,46 @@
     const cup=part(new THREE.CylinderGeometry(.08,.07,.17,10),CARD,0,-.36,.13,arms[1].elbow);
     const phone=part(softBox(.045,.25,.14),SHOES,-.1,-.34,0,arms[1].elbow);
     cup.visible=phone.visible=false;
-    return {figure,body,hips,head,legs,arms,cup,phone};
+    return Object.assign(rig,{figure,body,hips,legs,arms,cup,phone});
+  }
+  // Crown, cape, ermine, scepter, floating halo, golden aura and orbiting sparkles. Returns the per-frame animation.
+  function regalia(g,rig){
+    const gold=o=>{o.material=goldMaterial;return o;};
+    const crown=new THREE.Group();crown.position.y=.4;rig.head.add(crown);
+    gold(part(new THREE.CylinderGeometry(.3,.27,.14,20),GOLD,0,0,0,crown));
+    for(let i=0;i<5;i++){
+      const a=i/5*Math.PI*2,sx=Math.sin(a),sz=Math.cos(a);
+      gold(part(new THREE.ConeGeometry(.065,.22,8),GOLD,sx*.27,.17,sz*.27,crown));
+      oval(.07,.07,.035,[0xd0213b,0x2a6fd6,0x1f9e5a][i%3],sx*.3,.0,sz*.3,crown).lookAt(sx*2,0,sz*2);
+    }
+    const halo=gold(part(new THREE.TorusGeometry(.3,.022,8,40),GOLD,0,.72,0,rig.head));halo.rotation.x=Math.PI/2;
+    gold(oval(.52,.12,.42,GOLD,0,.72,0,rig.hips));
+    for(const side of [-1,1]){oval(.3,.17,.32,0xf4f0e6,side*.3,.68,-.02,rig.hips);oval(.05,.05,.05,SHOES,side*.32,.75,.12,rig.hips);}
+    const cape=new THREE.Group();cape.position.set(0,.72,-.21);rig.hips.add(cape);
+    part(softBox(.8,1.45,.05),0x9b1b30,0,-.72,0,cape);gold(part(softBox(.84,.08,.07),GOLD,0,-1.42,0,cape));
+    gold(part(new THREE.CylinderGeometry(.025,.025,.85,8),GOLD,0,-.35,.1,rig.arms[0].elbow));
+    gold(oval(.13,.13,.13,GOLD,0,.1,.1,rig.arms[0].elbow));oval(.07,.07,.07,0xd0213b,0,.19,.1,rig.arms[0].elbow);
+    const aura=new THREE.Mesh(new THREE.RingGeometry(.55,.78,40),glowMaterial);aura.rotation.x=-Math.PI/2;aura.position.y=.05;g.add(aura);
+    const sparkles=Array.from({length:6},()=>{const s=new THREE.Mesh(new THREE.OctahedronGeometry(.06),goldMaterial);g.add(s);return s;});
+    const light=new THREE.PointLight(0xffd27a,.9,4.5);light.position.y=2.3;g.add(light);
+    return t=>{
+      halo.position.y=.72+Math.sin(t*2)*.04;halo.rotation.z=t;
+      aura.scale.setScalar(1+Math.sin(t*3)*.08);glowMaterial.opacity=.35+Math.sin(t*3)*.15;
+      sparkles.forEach((s,i)=>{const a=t*1.2+i*Math.PI/3;s.position.set(Math.cos(a)*.9,1.2+Math.sin(t*2+i)*.5,Math.sin(a)*.9);s.rotation.y=t*3;});
+      cape.rotation.x=.12+Math.sin(t*1.7)*.05;
+    };
   }
   function character(person,index) {
-    const g=new THREE.Group(),rig=buildFigure(GROUPS[person.group].color,person.gender,index);g.add(rig.figure);
+    const g=new THREE.Group(),rig=buildFigure(person.ruler?ROYAL:GROUPS[person.group].color,person.gender,hairFor(person.n,person.gender,person));g.add(rig.figure);
+    const crown=person.ruler&&regalia(g,rig);
     rig.cue=mesh(new THREE.CylinderGeometry(.012,.02,1.45,8),BALSA,0,-.3,0,rig.arms[1].elbow,false);rig.cue.visible=false;
     const bubble=new THREE.Sprite(bubbleMaterial);bubble.scale.set(.75,.45,1);bubble.center.set(-.3,-.1);bubble.visible=false;g.add(bubble);
-    const label=document.createElement('button');label.className='name-label';label.type='button';label.textContent=person.initials;
+    const label=document.createElement('button');label.className='name-label';label.type='button';label.textContent=person.ruler?`👑 ${person.initials}`:person.initials;if(person.ruler)label.classList.add('ruler');
     label.title=`${person.initials}, ${person.role}`;label.setAttribute('aria-label',`View ${person.initials}, ${person.role}`);$('labels').append(label);
     const desk=desks[person.n];g.position.set(desk.x,0,desk.z);g.rotation.y=facing(desk);floors[3].add(g);
     const aisle=desk.route[0][0],stretchZ=desk.z-desk.f*.95;
     const stretchSpot={x:desk.x,z:stretchZ,f:desk.f,floor:3,route:[[aisle,P3],[aisle,stretchZ]],state:'stretch',local:true,label:'Standing up'};
-    const agent={...person,index,g,rig,bubble,label,desk,stretchSpot,heading:facing(desk),floor:3,spot:desk,path:[],destination:desk,state:'work',stairTrip:null,activity:null,visitor:null,nextRoutine:rand(6,25)};
+    const agent={...person,index,g,rig,regalia:crown,bubble,label,desk,stretchSpot,heading:facing(desk),floor:3,spot:desk,path:[],destination:desk,state:'work',stairTrip:null,activity:null,visitor:null,nextRoutine:rand(6,25)};
     label.onclick=()=>selectAgent(agent);g.traverse(o=>{o.userData.agent=agent;});return agent;
   }
 
@@ -968,7 +1048,7 @@
   // pay and leave. They are generic visitors, not team members, so they carry no name labels.
   const shop={people:[],chairs:[-11,-6].map(x=>({x,customer:null})),seats:[-8.4,-7,-5.6].map(x=>({x,customer:null})),paying:null,nextArrival:6};
   function extra(shirt,gender,index,x,z,rot){
-    const g=new THREE.Group(),rig=buildFigure(shirt,gender,index);g.add(rig.figure);g.position.set(x,0,z);g.rotation.y=rot;floors[1].add(g);
+    const g=new THREE.Group(),rig=buildFigure(shirt,gender,hairFor('visitor'+index,gender));g.add(rig.figure);g.position.set(x,0,z);g.rotation.y=rot;floors[1].add(g);
     return {g,rig,pose:'stand',path:[],heading:rot,seat:0};
   }
   const barbers=shop.chairs.map((c,i)=>{const b=extra(0x5c554b,i?'female':'male',i+20,c.x+1.05,-8.2,-Math.PI/2);b.chair=c;return b;});
@@ -1018,6 +1098,8 @@
       if(!c){const next=shop.people.filter(p=>p.state==='waiting').sort((a,b)=>a.since-b.since)[0];if(next){shop.seats.find(s=>s.customer===next).customer=null;toChair(next,chair);}}
       else if(c.state==='cut'&&simTime>c.until&&!shop.paying){
         shop.paying=c;chair.customer=null;c.state='toPay';
+        // Fresh cut: a different style from the same gender's list, same colour.
+        const styles=HAIR_BY_GENDER[c.rig.gender].filter(s=>s!==c.rig.hairStyle);setHair(c.rig,{style:styles[Math.floor(Math.random()*styles.length)],color:c.rig.hairColor});
         walk(c,[[chair.x,-6.4],[-10,-6.4],[-10,3.5],[-13.5,3.5]],()=>{c.state='pay';c.until=simTime+4;c.pose='pay';c.heading=Math.PI;});
       }
     }
@@ -1835,7 +1917,7 @@
     cam.target.x=Math.max(-25,Math.min(25,cam.target.x));cam.target.z=Math.max(-20,Math.min(20,cam.target.z));
     if(follow){if(keys.arrowleft)follow.yaw+=realDt*1.6;if(keys.arrowright)follow.yaw-=realDt*1.6;if(keys.arrowup)follow.pitch=Math.min(.9,follow.pitch+realDt);if(keys.arrowdown)follow.pitch=Math.max(-1.2,follow.pitch-realDt);}
     else{camera.position.set(cam.target.x+cam.radius*Math.sin(cam.phi)*Math.sin(cam.theta),cam.target.y+cam.radius*Math.cos(cam.phi),cam.target.z+cam.radius*Math.sin(cam.phi)*Math.cos(cam.theta));camera.lookAt(cam.target);camera.updateMatrixWorld();}
-    for(const a of agents){updateAgent(a,dt);if(dt>0)live(a);syncTaskDisplay(a);}
+    for(const a of agents){updateAgent(a,dt);if(dt>0)live(a);syncTaskDisplay(a);if(a.regalia)a.regalia(simTime);}
     if(skyline.visible)animateSky(dt);
     stepShop(dt);
     for(const d of doors){const near=agents.some(a=>a.floor===d.floor&&a.state!=='stairs'&&a.g.position.distanceTo(d.center)<1.6);d.open+=((near?1:0)-d.open)*Math.min(1,dt*6);d.pivot.rotation.y=d.base+d.open*1.45;}

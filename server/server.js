@@ -117,18 +117,24 @@ async function rebuildTeam() {
       let c = 0;
       const newProfiles = [];
       for (const p of data.profiles) {
-        if (p.name !== 'default') {
-          c++;
-          newProfiles.push({
-            n: p.name,
-            initials: p.name,
-            gender: c % 2 === 0 ? 'female' : 'male',
-            role: 'AI Agent',
-            model: p.model || 'hermes',
-            group: teamOverrides[p.name]?.group || (p.name === 'techlead' ? 'leadership' : 'engineering')
-          });
-        }
+        // The default profile is the orchestrator: it sits with Leadership and gets the regal avatar.
+        const ruler = p.name === 'default';
+        if (!ruler) c++;
+        newProfiles.push({
+          n: p.name,
+          initials: p.name,
+          gender: teamOverrides[p.name]?.gender || (c % 2 === 0 ? 'female' : 'male'),
+          // Optional look from data/team-overrides.json, e.g. {"hair": "bun", "hairColor": "#8a5a3b"}.
+          ...(teamOverrides[p.name]?.hair && {hair: teamOverrides[p.name].hair}),
+          ...(teamOverrides[p.name]?.hairColor && {hairColor: teamOverrides[p.name].hairColor}),
+          role: ruler ? 'Orchestrator' : 'AI Agent',
+          model: p.model || 'hermes',
+          group: teamOverrides[p.name]?.group || (ruler || p.name === 'techlead' ? 'leadership' : 'engineering'),
+          ...(ruler && {ruler: true})
+        });
       }
+      // Orchestrator first, so it takes the head seat in Leadership.
+      newProfiles.sort((a, b) => !!b.ruler - !!a.ruler);
       TEAM_PROFILES = newProfiles;
       MEMBERS.clear();
       TEAM_PROFILES.forEach(p => MEMBERS.add(p.n));
